@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.leak-words
+*token*.json
+client_secret*.json
+reports/
+*.local.md

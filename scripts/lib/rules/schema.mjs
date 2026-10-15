@@ -1,0 +1,135 @@
+// JSON-LD: parse errors, missing key fields, @id consistency, dates. Only checks with search impact or real breakage.
+import { finding } from "./util.mjs";
+
+/** Every typed node in a JSON-LD document (handles @graph and nesting). `nested`: inside another typed node. */
+export function nodes(data, { withNesting = false } = {}) {
+  const out = [];
+  const walk = (v, nested) => {
+    if (Array.isArray(v)) return v.forEach((x) => walk(x, nested));
+    if (!v || typeof v !== "object") return;
+    if (v["@type"]) out.push(withNesting ? { node: v, nested } : v);
+    for (const [k, x] of Object.entries(v)) if (k !== "@context") walk(x, nested || (!!v["@type"] && k !== "@graph"));
+  };
+  walk(data, false);
+  return out;
+}
+
+/** Top-level typed nodes only (the page's own entities, not list items or publishers inside them). */
+const topLevel = (pages) =>
+  [...pages].flatMap(([u, p]) => (p.facts?.jsonLd ?? []).filter((j) => j.ok).flatMap((j) => nodes(j.data, { withNesting: true }).filter((x) => !x.nested).map((x) => [u, x.node])));
+
+const types = (n) => [].concat(n["@type"]).map(String);
+const has = (n, t) => types(n).includes(t);
+const all = (pages) => [...pages].flatMap(([u, p]) => (p.facts?.jsonLd ?? []).filter((j) => j.ok).flatMap((j) => nodes(j.data).map((n) => [u, n])));
+
+const ARTICLE = ["Article", "NewsArticle", "BlogPosting"];
+// Types whose dateModified means "data changed", not "page changed" (do not compare with sitemap lastmod).
+const DATA_TYPES = ["Dataset", "DataCatalog", "Event", "Offer"];
+
+export default [
+  {
+    id: "jsonld-invalid",
+    severity: "error",
+    tr: "JSON-LD bozuk (ayrıştırılamıyor)",
+    en: "JSON-LD does not parse",
+    check: ({ pages }) => [...pages].flatMap(([u, p]) => (p.facts?.jsonLd ?? []).filter((j) => !j.ok).map((j) => finding(u, j.error))),
+  },
+  {
+    id: "article-fields",
+    severity: "warn",
+    tr: "Article/BlogPosting'te headline, datePublished, author ya da image eksik",
+    en: "Article/BlogPosting missing headline, datePublished, author or image",
+    check: ({ pages }) =>
+      topLevel(pages)
+        .filter(([, n]) => ARTICLE.some((t) => has(n, t)))
+        .flatMap(([u, n]) => {
+          const miss = ["headline", "datePublished", "author", "image"].filter((k) => !n[k]);
+          return miss.length ? [finding(u, `${types(n).join("/")}: ${miss.join(", ")}`)] : [];
+        }),
+  },
+  {
+    id: "author-fake-risk",
+    severity: "info",
+    tr: "Person yazar var: gerçek ve doğrulanabilir kişi mi? (uydurma uzman profili spam sayılır)",
+    en: "Person author present: is it a real, verifiable person? (invented experts are spam)",
+    check: ({ pages }) => {
+      const names = new Map();
+      for (const [u, n] of all(pages)) {
+        if (!ARTICLE.some((t) => has(n, t))) continue;
+        for (const a of [].concat(n.author ?? [])) if (a && typeof a === "object" && has(a, "Person") && a.name) names.set(a.name, u);
+      }
+      return [...names].map(([name, u]) => finding(u, name));
+    },
+  },
+  {
+    id: "date-future",
+    severity: "warn",
+    tr: "datePublished/dateModified gelecekte",
+    en: "datePublished/dateModified in the future",
+    check: ({ pages }) => {
+      const now = Date.now() + 864e5;
+      return all(pages).flatMap(([u, n]) => ["datePublished", "dateModified"].filter((k) => n[k] && Date.parse(n[k]) > now).map((k) => finding(u, `${types(n)[0]}.${k}=${n[k]}`)));
+    },
+  },
+  {
+    id: "date-order",
+    severity: "warn",
+    tr: "dateModified, datePublished'tan önce",
+    en: "dateModified earlier than datePublished",
+    check: ({ pages }) => all(pages).filter(([, n]) => n.datePublished && n.dateModified && Date.parse(n.dateModified) < Date.parse(n.datePublished)).map(([u, n]) => finding(u, `${n.datePublished} > ${n.dateModified}`)),
+  },
+  {
+    id: "sitemap-lastmod-drift",
+    severity: "info",
+    tr: "Site haritası lastmod ile sayfa dateModified farklı gün (Dataset/Event tarihleri hariç)",
+    en: "Sitemap lastmod and page dateModified differ (Dataset/Event dates excluded)",
+    check: ({ pages, sitemap }) =>
+      all(pages).flatMap(([u, n]) => {
+        if (!n.dateModified || DATA_TYPES.some((t) => has(n, t)) || !ARTICLE.concat("WebPage").some((t) => has(n, t))) return [];
+        const lm = sitemap.urls.get(u);
+        if (!lm) return [];
+        return lm.slice(0, 10) !== String(n.dateModified).slice(0, 10) ? [finding(u, `lastmod ${lm.slice(0, 10)} vs ${types(n)[0]} ${String(n.dateModified).slice(0, 10)}`)] : [];
+      }),
+  },
+  {
+    id: "org-id-inconsistent",
+    severity: "warn",
+    tr: "Aynı kuruluş farklı @id'lerle (varlık birleşmez)",
+    en: "Same organisation under different @ids",
+    check: ({ pages }) => {
+      const ids = new Map();
+      for (const [u, n] of all(pages)) {
+        if (!has(n, "Organization") || !n.name) continue;
+        const s = ids.get(n.name) ?? new Map();
+        s.set(n["@id"] ?? "(none)", u);
+        ids.set(n.name, s);
+      }
+      return [...ids].filter(([, s]) => s.size > 1).map(([name, s]) => finding([...s.values()][0], `${name}: ${[...s.keys()].join(" | ")}`));
+    },
+  },
+  {
+    id: "breadcrumb-positions",
+    severity: "warn",
+    tr: "BreadcrumbList position sırası bozuk ya da item eksik",
+    en: "BreadcrumbList positions out of order or item missing",
+    check: ({ pages }) =>
+      all(pages)
+        .filter(([, n]) => has(n, "BreadcrumbList"))
+        .flatMap(([u, n]) => {
+          const items = [].concat(n.itemListElement ?? []);
+          const bad = items.some((it, i) => Number(it.position) !== i + 1 || (!it.item && i < items.length - 1));
+          return bad ? [finding(u)] : [];
+        }),
+  },
+  {
+    id: "faq-howto-note",
+    severity: "info",
+    tr: "FAQPage/HowTo var: Google bu zengin sonuçları çoğu site için göstermiyor; zararı yok, sıralama getirmez",
+    en: "FAQPage/HowTo present: Google shows these rich results for few sites; harmless, no ranking gain",
+    site: true,
+    check: ({ pages }) => {
+      const hit = all(pages).find(([, n]) => has(n, "FAQPage") || has(n, "HowTo"));
+      return hit ? [finding(hit[0], "site-wide note")] : [];
+    },
+  },
+];

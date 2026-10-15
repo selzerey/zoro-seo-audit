@@ -1,0 +1,22 @@
+{
+  "name": "zoro-seo-audit",
+  "version": "0.1.0",
+  "description": "Low-noise SEO audit skill for Claude Code: crawler, verified rules, Search Console / Bing / IndexNow loop.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "audit": "node scripts/audit.mjs",
+    "gsc": "node scripts/gsc.mjs",
+    "bing": "node scripts/bing.mjs",
+    "indexnow": "node scripts/indexnow.mjs",
+    "leak-check": "node scripts/leak-check.mjs",
+    "test": "node --test scripts/tests/"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "node-html-parser": "^6.1.13"
+  }
+}

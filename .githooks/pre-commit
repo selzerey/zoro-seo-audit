@@ -1,0 +1,6 @@
+#!/bin/sh
+# Enable once per clone: git config core.hooksPath .githooks
+node scripts/leak-check.mjs || {
+  echo "Commit blocked by leak-check. Remove the private word or secret and try again."
+  exit 1
+}
