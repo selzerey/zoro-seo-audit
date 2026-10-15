@@ -6,7 +6,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { isMain } from "./lib/args.mjs";
 import { loadEnv } from "./lib/env.mjs";
 
 export const SECRET_PATTERNS = [
@@ -68,4 +68,4 @@ export function main(argv = process.argv.slice(2)) {
   } else console.error(`leak-check OK (${files.length} file(s))`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isMain(import.meta.url)) main();

@@ -5,8 +5,7 @@
 // Publish the consent screen ("In production") or the refresh token expires after 7 days.
 import fs from "node:fs";
 import http from "node:http";
-import { pathToFileURL } from "node:url";
-import { parseArgs } from "./lib/args.mjs";
+import { isMain, parseArgs } from "./lib/args.mjs";
 
 const SCOPES = ["https://www.googleapis.com/auth/webmasters"];
 
@@ -44,7 +43,7 @@ export async function main(argv = process.argv.slice(2)) {
   console.log(`saved refresh token to ${a.out} (keep it out of git)`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href)
+if (isMain(import.meta.url))
   main().catch((e) => {
     console.error(e.message);
     process.exit(1);

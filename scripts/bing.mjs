@@ -8,8 +8,7 @@
 //   node scripts/bing.mjs submit  --site https://example.com/ <url> [<url> ...]   (counts against the daily quota)
 // BING_API_KEY and BING_SITE come from env. Stats cover roughly the last 6 months, summed per query/page.
 // The "AI Performance" (Copilot citations) report is in the web UI only: /webmasters/aiperformance?siteUrl=<site>
-import { pathToFileURL } from "node:url";
-import { parseArgs } from "./lib/args.mjs";
+import { isMain, parseArgs } from "./lib/args.mjs";
 import { loadEnv } from "./lib/env.mjs";
 
 const API = "https://ssl.bing.com/webmaster/api.svc/json";
@@ -60,7 +59,7 @@ export async function main(argv = process.argv.slice(2)) {
   throw new Error(`unknown command: ${cmd ?? "(none)"} — use sites | queries | pages | crawl-issues | quota | submit`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href)
+if (isMain(import.meta.url))
   main().catch((e) => {
     console.error(e.message.replace(/apikey=[^&\s]+/g, "apikey=***"));
     process.exit(1);

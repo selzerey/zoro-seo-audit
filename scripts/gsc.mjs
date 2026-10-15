@@ -7,8 +7,7 @@
 //   node scripts/gsc.mjs zero      --site sc-domain:example.com --sitemap https://example.com/sitemap.xml [--days 90]
 // GSC_SITE in env replaces --site. Data lags ~2-3 days; the window ends 3 days ago.
 import fs from "node:fs";
-import { pathToFileURL } from "node:url";
-import { parseArgs } from "./lib/args.mjs";
+import { isMain, parseArgs } from "./lib/args.mjs";
 import { readSitemaps } from "./lib/crawl.mjs";
 import { loadEnv } from "./lib/env.mjs";
 import { googleClient } from "./lib/google.mjs";
@@ -108,7 +107,7 @@ export async function main(argv = process.argv.slice(2)) {
   throw new Error(`unknown command: ${cmd ?? "(none)"} — use sites | report | inspect | sitemaps | zero`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href)
+if (isMain(import.meta.url))
   main().catch((e) => {
     console.error(e.message);
     process.exit(1);

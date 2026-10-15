@@ -5,8 +5,7 @@
 // INDEXNOW_KEY from env; the key file must be served at https://<host>/<key>.txt (or INDEXNOW_KEY_LOCATION).
 // Submit only new or really changed URLs; resubmitting unchanged pages wastes trust.
 import fs from "node:fs";
-import { pathToFileURL } from "node:url";
-import { parseArgs } from "./lib/args.mjs";
+import { isMain, parseArgs } from "./lib/args.mjs";
 import { loadEnv } from "./lib/env.mjs";
 
 export function payload({ host, key, keyLocation, urls }) {
@@ -47,7 +46,7 @@ export async function main(argv = process.argv.slice(2)) {
   throw new Error("use: check | submit");
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href)
+if (isMain(import.meta.url))
   main().catch((e) => {
     console.error(e.message);
     process.exit(1);

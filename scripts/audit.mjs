@@ -2,8 +2,7 @@
 // Usage: node scripts/audit.mjs <url> [--max 50] [--concurrency 4] [--delay 100] [--check-links 300]
 //        [--lang tr|en] [--format md|json] [--out file] [--only id,cat] [--skip id,id] [--ua "..."] [--quiet]
 import fs from "node:fs";
-import { pathToFileURL } from "node:url";
-import { parseArgs } from "./lib/args.mjs";
+import { isMain, parseArgs } from "./lib/args.mjs";
 import { crawl } from "./lib/crawl.mjs";
 import { loadEnv } from "./lib/env.mjs";
 import { DEFAULT_UA, fetchChain } from "./lib/fetch.mjs";
@@ -46,4 +45,4 @@ export async function main(argv = process.argv.slice(2)) {
   return results;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isMain(import.meta.url)) main();
