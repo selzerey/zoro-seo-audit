@@ -165,7 +165,10 @@ export default [
         for (const [k, x] of Object.entries(v)) if (k !== "@context") walk(x, u);
       };
       for (const [u, p] of pages) for (const j of p.facts?.jsonLd ?? []) if (j.ok) walk(j.data, u);
-      return [...refs].filter(([id]) => !defined.has(id)).map(([id, u]) => finding(u, id));
+      // Only judge ids whose document was crawled (or is the referring page): a link to an uncrawled page's
+      // entity says nothing about that page.
+      const doc = (s) => s.split("#")[0];
+      return [...refs].filter(([id, u]) => !defined.has(id) && (doc(id) === doc(u) || pages.has(doc(id)))).map(([id, u]) => finding(u, id));
     },
   },
 ];

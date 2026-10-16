@@ -51,6 +51,18 @@ test("title-near-duplicate ignores template words, catches two pages on one quer
   assert.match(f[0].detail, /isimler\/\?g=f/);
 });
 
+test("title-near-duplicate: a template word only one title has is a difference; short words count", () => {
+  const filler = Array.from({ length: 12 }, (_, i) => page(`${O}/isim/n${i}/`, { title: `Ad${i} isminin anlamı nedir? ${i % 2 ? "Kız" : "Erkek"} ismi` }));
+  const pages = [...filler, page(`${O}/kiz/`, { title: "Kız bebek isimleri ve anlamları" }), page(`${O}/erkek/`, { title: "Erkek bebek isimleri ve anlamları" }), page(`${O}/isim/mira/`, { title: "Mira isminin anlamı nedir? Kız ismi" }), page(`${O}/isim/mira-su/`, { title: "Mira Su isminin anlamı nedir? Kız ismi" })];
+  assert.ok(!ids(ctxOf(pages), ["title-near-duplicate"]).has("title-near-duplicate"));
+});
+
+test("schema-dangling-id skips ids on uncrawled pages", () => {
+  const g = ld({ "@context": "https://schema.org", "@graph": [{ "@type": "BlogPosting", "@id": `${O}/rehber/a/#post`, mentions: [{ "@id": `${O}/isim/ayse/#term` }], isPartOf: { "@id": `${O}/rehber/a/#breadcrumb` } }] });
+  const f = ids(ctxOf([page(`${O}/rehber/a/`, { jsonLd: [g] })]), ["schema-dangling-id"]).get("schema-dangling-id")?.findings.map((x) => x.detail) ?? [];
+  assert.deepEqual(f, [`${O}/rehber/a/#breadcrumb`]);
+});
+
 test("title-no-brand flags short brandless titles only", () => {
   const site = ld({ "@context": "https://schema.org", "@graph": [{ "@type": "WebSite", name: "Bebek İsimleri" }] });
   const pages = [page(`${O}/`, { title: "Bebek İsimleri ve anlamları", jsonLd: [site] }), page(`${O}/iletisim/`, { title: "İletişim" }), page(`${O}/hakkimizda/`, { title: "Hakkımızda · Bebek İsimleri" })];
@@ -60,11 +72,11 @@ test("title-no-brand flags short brandless titles only", () => {
 
 test("page-entity-missing and schema-dangling-id", () => {
   const crumb = ld({ "@type": "BreadcrumbList", itemListElement: [] });
-  const pageGraph = ld({ "@context": "https://schema.org", "@graph": [{ "@type": "ItemPage", "@id": `${O}/isim/defne/#webpage`, mainEntity: { "@id": `${O}/isim/defne/#term` } }, { "@type": "DefinedTerm", "@id": `${O}/isim/defne/#term`, inDefinedTermSet: { "@id": `${O}/isimler/#termset` } }] });
+  const pageGraph = ld({ "@context": "https://schema.org", "@graph": [{ "@type": "ItemPage", "@id": `${O}/isim/defne/#webpage`, mainEntity: { "@id": `${O}/isim/defne/#term` } }, { "@type": "DefinedTerm", "@id": `${O}/isim/defne/#term`, inDefinedTermSet: { "@id": `${O}/isim/defne/#termset` } }] });
   const pages = [page(`${O}/a/`, { jsonLd: [crumb] }), page(`${O}/isim/defne/`, { jsonLd: [pageGraph] })];
   const r = ids(ctxOf(pages), ["page-entity-missing", "schema-dangling-id"]);
   assert.deepEqual(r.get("page-entity-missing").findings.map((x) => x.url), [`${O}/a/`]);
-  assert.deepEqual(r.get("schema-dangling-id").findings.map((x) => x.detail), [`${O}/isimler/#termset`], "#term is defined, #termset is not");
+  assert.deepEqual(r.get("schema-dangling-id").findings.map((x) => x.detail), [`${O}/isim/defne/#termset`], "#term is defined, #termset is not");
 });
 
 test("sitemap-query-url", () => {

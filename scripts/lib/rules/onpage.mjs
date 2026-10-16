@@ -14,24 +14,30 @@ function duplicates(pages, pick) {
 
 const facts = (pages) => [...pages].filter(([, p]) => p.facts);
 
-const tokens = (t) => new Set(t.toLocaleLowerCase("tr").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 2));
+// Short words count ("Su" in "Mira Su" is the whole difference); only true function words are dropped.
+const STOP = new Set(["ve", "ile", "de", "da", "ne", "mi", "bu", "the", "and", "of", "to", "in", "for", "on", "or"]);
+const tokens = (t) => new Set(t.toLocaleLowerCase("tr").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w)));
 
 /**
  * Near-duplicate titles among indexable pages: words shared by many titles (template words such as "anlamı",
- * "nedir") are ignored, then pairs whose remaining words overlap ≥ 80 % (Jaccard) are reported. Catches a category
- * and a listing page chasing the same query ("Kız isimleri" vs "Kız bebek isimleri ve anlamları").
+ * "nedir") are ignored when both titles have them, then pairs whose remaining words overlap ≥ 80 % (Jaccard) are
+ * reported. A template word only one title has is a real difference ("Kız …" vs "Erkek …" are two queries). Catches
+ * a category and a listing page chasing the same query ("Kız isimleri" vs "Kız bebek isimleri ve anlamları").
  */
 export function nearDuplicateTitles(pages, { threshold = 0.8, templateShare = 0.15 } = {}) {
   const rows = [...pages].filter(([, p]) => indexable(p) && p.facts.title).map(([u, p]) => ({ u, t: p.facts.title, k: tokens(p.facts.title) }));
   const df = new Map();
   for (const r of rows) for (const w of r.k) df.set(w, (df.get(w) ?? 0) + 1);
   const cap = Math.max(3, rows.length * templateShare);
-  for (const r of rows) r.k = new Set([...r.k].filter((w) => df.get(w) <= cap));
+  const template = (w) => df.get(w) > cap;
   const out = [];
   for (let i = 0; i < rows.length; i++)
     for (let j = i + 1; j < rows.length; j++) {
-      const a = rows[i], b = rows[j];
-      if (!a.k.size || !b.k.size || a.t.toLocaleLowerCase("tr") === b.t.toLocaleLowerCase("tr")) continue;
+      const a0 = rows[i], b0 = rows[j];
+      if (a0.t.toLocaleLowerCase("tr") === b0.t.toLocaleLowerCase("tr")) continue;
+      const keep = (x, y) => new Set([...x.k].filter((w) => !(template(w) && y.k.has(w))));
+      const a = { ...a0, k: keep(a0, b0) }, b = { ...b0, k: keep(b0, a0) };
+      if (!a.k.size || !b.k.size) continue;
       const inter = [...a.k].filter((w) => b.k.has(w)).length;
       const jac = inter / (a.k.size + b.k.size - inter);
       if (jac >= threshold) out.push(finding(a.u, `≈ ${b.u} (${Math.round(jac * 100)}%): "${a.t}" / "${b.t}"`));
