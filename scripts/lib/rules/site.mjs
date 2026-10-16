@@ -1,8 +1,40 @@
 // Site-wide checks: host normalisation, robots.txt, AI crawler access. Uses ctx.probes filled by audit.mjs.
 import { BOTS, isAllowed } from "../robots.mjs";
-import { finding } from "./util.mjs";
+import { finding, noindex, xRobotsNoindex } from "./util.mjs";
+
+/**
+ * Site closed to search engines on purpose (staging / pre-launch): robots.txt blocks Googlebot at the start URL and
+ * most crawled pages say noindex. Then per-page noindex / sitemap / robots findings are the switch, not bugs.
+ */
+export function siteClosed({ robots, start, pages }) {
+  if (isAllowed(robots, "Googlebot", start)) return false;
+  const withFacts = [...pages.values()].filter((p) => p.facts);
+  if (!withFacts.length) return true;
+  const ni = withFacts.filter((p) => noindex(p.facts) || xRobotsNoindex(p.fetch.headers)).length;
+  return ni / withFacts.length >= 0.8;
+}
 
 export default [
+  {
+    id: "site-closed",
+    severity: "error",
+    tr: "Site arama motorlarına kapalı (robots.txt her şeyi engelliyor ve sayfalar noindex). Hazırlık sitesiyse beklenen durum; canlıysa en önemli sorun budur. Bu durumda sayfa başına noindex/site haritası/robots bulguları gizlenir",
+    en: "Site closed to search engines (robots.txt blocks all and pages are noindex). Expected on staging; the top issue if live. Per-page noindex/sitemap/robots findings are suppressed",
+    site: true,
+    check: (ctx) => (siteClosed(ctx) ? [finding(ctx.start, "robots.txt Disallow: / + noindex")] : []),
+  },
+  {
+    id: "favicon-missing",
+    severity: "warn",
+    tr: "Site ikonu (favicon) yok ya da açılmıyor; Google arama sonucunda sitenin yanında bu ikonu gösterir",
+    en: "No working favicon; Google shows it next to the site in results",
+    check: ({ probes, start }) => {
+      const f = probes?.favicon;
+      if (!f) return [];
+      const ok = f.status === 200 && /image|icon|octet-stream/i.test(f.type);
+      return ok ? [] : [finding(start, `${f.declared ? "declared" : "not declared, /favicon.ico"}: ${f.url} → ${f.status} ${f.type}`)];
+    },
+  },
   {
     id: "host-normalisation",
     severity: "error",

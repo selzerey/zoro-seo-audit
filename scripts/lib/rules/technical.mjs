@@ -126,4 +126,11 @@ export default [
     en: "Server response slower than 1 s (single sample; re-measure)",
     check: ({ pages }) => [...pages].filter(([, p]) => p.fetch.ms > 1000).map(([u, p]) => finding(u, `${p.fetch.ms} ms`)),
   },
+  {
+    id: "sitemap-query-url",
+    severity: "info",
+    tr: "Site haritasında sorgu parametreli adres (?…): çoğu zaman filtre/sıralama kopyasıdır; kendi canonical'ı olan bilinçli bir sayfa mı, kontrol et",
+    en: "Query-string URL in the sitemap (?…): often a filter/sort duplicate; confirm it is a deliberate self-canonical page",
+    check: ({ sitemap }) => [...sitemap.urls.keys()].filter((u) => new URL(u).search).map((u) => finding(u)),
+  },
 ];

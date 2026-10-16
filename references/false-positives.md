@@ -12,6 +12,13 @@ finding, confirm it on the live page. Each item below cost real time once.
 - Bot challenge (Cloudflare/WAF) on a datacenter IP: 403/503 + challenge HTML. Results for those pages are void. Rerun
   from a residential IP or allowlist the audit UA; never "fix" pages because of challenge responses.
 
+- Whole site noindex on staging/preview (robots `Disallow: /` + noindex): that is the pre-launch switch, not a bug;
+  `site-closed` reports it once. Audit with indexing opened on staging to see real findings.
+- Query-string URLs in a sitemap (`/list/?g=f`) are fine when the page is a deliberate, self-canonical landing page
+  with its own title; `sitemap-query-url` is info only.
+- Near-duplicate titles on templated pages ("X isminin anlamı nedir") are not cannibalisation; the rule drops words
+  shared by >15 % of titles before comparing.
+
 ## Dates
 - `Dataset`, `Event`, `Offer` `dateModified`/dates describe the data (e.g. tax rates valid from Jan 1), not the page.
   Mismatch with sitemap `lastmod` is correct there.

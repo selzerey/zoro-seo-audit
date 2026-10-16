@@ -1,5 +1,5 @@
 // JSON-LD: parse errors, missing key fields, @id consistency, dates. Only checks with search impact or real breakage.
-import { finding } from "./util.mjs";
+import { finding, indexable } from "./util.mjs";
 
 /** Every typed node in a JSON-LD document (handles @graph and nesting). `nested`: inside another typed node. */
 export function nodes(data, { withNesting = false } = {}) {
@@ -130,6 +130,42 @@ export default [
     check: ({ pages }) => {
       const hit = all(pages).find(([, n]) => has(n, "FAQPage") || has(n, "HowTo"));
       return hit ? [finding(hit[0], "site-wide note")] : [];
+    },
+  },
+  {
+    id: "page-entity-missing",
+    severity: "info",
+    tr: "Sayfanın kendi yapısal verisi yok (yalnız BreadcrumbList / site geneli Organization-WebSite): WebPage türü + ana varlık (Article, Product, DefinedTerm, WebApplication, Dataset…) ekle",
+    en: "No page-level structured data (only BreadcrumbList / site-wide Organization-WebSite): add a WebPage type + main entity",
+    check: ({ pages }) => {
+      const SITE_ONLY = new Set(["BreadcrumbList", "Organization", "WebSite", "ListItem", "ImageObject", "ContactPoint"]);
+      return [...pages]
+        .filter(([, p]) => indexable(p))
+        .filter(([, p]) => {
+          const ts = (p.facts.jsonLd ?? []).filter((j) => j.ok).flatMap((j) => nodes(j.data).flatMap(types));
+          return !ts.some((t) => !SITE_ONLY.has(t));
+        })
+        .map(([u]) => finding(u));
+    },
+  },
+  {
+    id: "schema-dangling-id",
+    severity: "info",
+    tr: "JSON-LD @id başvurusu taranan sayfalarda hiç tanımlanmamış (varlık bağlanmaz). Tarama kapsamı dışındaki bir sayfada tanımlıysa yok say",
+    en: "JSON-LD @id reference never defined on crawled pages (entity graph breaks). Ignore if defined on an uncrawled page",
+    check: ({ pages, origin }) => {
+      const defined = new Set();
+      const refs = new Map();
+      const walk = (v, u) => {
+        if (Array.isArray(v)) return v.forEach((x) => walk(x, u));
+        if (!v || typeof v !== "object") return;
+        const keys = Object.keys(v);
+        if (v["@id"] && v["@type"]) defined.add(String(v["@id"]));
+        else if (v["@id"] && keys.length === 1 && String(v["@id"]).startsWith(origin)) refs.set(String(v["@id"]), refs.get(String(v["@id"])) ?? u);
+        for (const [k, x] of Object.entries(v)) if (k !== "@context") walk(x, u);
+      };
+      for (const [u, p] of pages) for (const j of p.facts?.jsonLd ?? []) if (j.ok) walk(j.data, u);
+      return [...refs].filter(([id]) => !defined.has(id)).map(([id, u]) => finding(u, id));
     },
   },
 ];

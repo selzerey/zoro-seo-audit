@@ -14,6 +14,47 @@ function duplicates(pages, pick) {
 
 const facts = (pages) => [...pages].filter(([, p]) => p.facts);
 
+const tokens = (t) => new Set(t.toLocaleLowerCase("tr").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 2));
+
+/**
+ * Near-duplicate titles among indexable pages: words shared by many titles (template words such as "anlamı",
+ * "nedir") are ignored, then pairs whose remaining words overlap ≥ 80 % (Jaccard) are reported. Catches a category
+ * and a listing page chasing the same query ("Kız isimleri" vs "Kız bebek isimleri ve anlamları").
+ */
+export function nearDuplicateTitles(pages, { threshold = 0.8, templateShare = 0.15 } = {}) {
+  const rows = [...pages].filter(([, p]) => indexable(p) && p.facts.title).map(([u, p]) => ({ u, t: p.facts.title, k: tokens(p.facts.title) }));
+  const df = new Map();
+  for (const r of rows) for (const w of r.k) df.set(w, (df.get(w) ?? 0) + 1);
+  const cap = Math.max(3, rows.length * templateShare);
+  for (const r of rows) r.k = new Set([...r.k].filter((w) => df.get(w) <= cap));
+  const out = [];
+  for (let i = 0; i < rows.length; i++)
+    for (let j = i + 1; j < rows.length; j++) {
+      const a = rows[i], b = rows[j];
+      if (!a.k.size || !b.k.size || a.t.toLocaleLowerCase("tr") === b.t.toLocaleLowerCase("tr")) continue;
+      const inter = [...a.k].filter((w) => b.k.has(w)).length;
+      const jac = inter / (a.k.size + b.k.size - inter);
+      if (jac >= threshold) out.push(finding(a.u, `≈ ${b.u} (${Math.round(jac * 100)}%): "${a.t}" / "${b.t}"`));
+    }
+  return out;
+}
+
+/** Brand of the site: WebSite/Organization name in JSON-LD or og:site_name, from the first page that has one. */
+export function siteBrand(pages) {
+  for (const [, p] of pages) {
+    const f = p.facts;
+    if (!f) continue;
+    for (const j of f.jsonLd ?? []) {
+      if (!j.ok) continue;
+      const g = [].concat(j.data?.["@graph"] ?? j.data);
+      const w = g.find((n) => n && /^(WebSite|Organization)$/.test(String(n["@type"])) && n.name);
+      if (w) return String(w.name);
+    }
+    if (f.siteName) return f.siteName;
+  }
+  return null;
+}
+
 export default [
   {
     id: "title-missing",
@@ -28,6 +69,27 @@ export default [
     tr: "Aynı başlık birden fazla sayfada (kanibalizasyon işareti)",
     en: "Same title on several pages (cannibalisation signal)",
     check: ({ pages }) => duplicates(pages, (f) => f.title),
+  },
+  {
+    id: "title-near-duplicate",
+    severity: "warn",
+    tr: "Birbirine çok benzeyen başlıklar (şablon kelimeleri dışında %80+ ortak): aynı aramayı hedefleyen iki sayfa olabilir",
+    en: "Near-duplicate titles (80%+ shared words beyond template words): two pages may chase the same query",
+    check: ({ pages }) => nearDuplicateTitles(pages),
+  },
+  {
+    id: "title-no-brand",
+    severity: "info",
+    tr: "Kısa başlıkta marka yok (\"İletişim\", \"Arama\" gibi): sonuçta kimin sayfası olduğu anlaşılmaz",
+    en: "Short title without the brand (\"Contact\", \"Search\"): the result does not say whose page it is",
+    check: ({ pages }) => {
+      const brand = siteBrand(pages);
+      if (!brand) return [];
+      const b = brand.toLocaleLowerCase("tr");
+      return facts(pages)
+        .filter(([, p]) => indexable(p) && p.facts.title && p.facts.title.length < 30 && !p.facts.title.toLocaleLowerCase("tr").includes(b))
+        .map(([u, p]) => finding(u, p.facts.title));
+    },
   },
   {
     id: "title-long",

@@ -17,6 +17,14 @@ export function hostVariants(start) {
   return [`http://${u.host}/`, `https://${alt}/`, `http://${alt}/`];
 }
 
+/** Status and content type of the home page's first declared icon (or /favicon.ico when none is declared). */
+export async function faviconProbe(ctx, ua) {
+  const home = ctx.pages.get(ctx.start)?.facts;
+  const url = home?.icons?.[0] ?? `${ctx.origin}/favicon.ico`;
+  const r = await fetchChain(url, { ua });
+  return { url, declared: !!home?.icons?.length, status: r.status, type: r.headers?.["content-type"] ?? "" };
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const env = loadEnv();
   const a = parseArgs(argv);
@@ -35,7 +43,7 @@ export async function main(argv = process.argv.slice(2)) {
     ua,
     log,
   });
-  ctx.probes = { hosts: await Promise.all(hostVariants(ctx.start).map((u) => fetchChain(u, { ua }))) };
+  ctx.probes = { hosts: await Promise.all(hostVariants(ctx.start).map((u) => fetchChain(u, { ua }))), favicon: await faviconProbe(ctx, ua) };
   const results = runRules(ctx, { only: a.only?.split(","), skip: a.skip?.split(",") ?? [] });
   const out = a.format === "json" ? toJson(ctx, results) : toMarkdown(ctx, results, { lang: a.lang ?? "tr" });
   if (a.out) {

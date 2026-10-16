@@ -13,7 +13,7 @@
     "bing": "node scripts/bing.mjs",
     "indexnow": "node scripts/indexnow.mjs",
     "leak-check": "node scripts/leak-check.mjs",
-    "test": "node --test scripts/tests/"
+    "test": "node --test \"scripts/tests/**/*.test.mjs\""
   },
   "license": "MIT",
   "dependencies": {

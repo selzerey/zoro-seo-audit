@@ -18,9 +18,20 @@ Use JSON-LD. Markup must describe what is visible on the page. Validate with Goo
 | Calculator / web tool | `WebApplication` (or `SoftwareApplication`) | name, url, applicationCategory, operatingSystem "Any", offers price 0 if free |
 | Tool + its guide on one page | `WebApplication` + `Article` | Article `about`/`mainEntityOfPage` the page |
 | Rates/tables from official sources | `Dataset` | name, description, creator, temporalCoverage, dateModified = data date, isBasedOn/citation source |
+| Dictionary / glossary entry (names, terms) | `ItemPage` + `DefinedTerm` in a site `DefinedTermSet` | name, description (the meaning), url, inDefinedTermSet → set `@id` (set lives on the index page) |
+| Listing page with visible items | `CollectionPage` → mainEntity `ItemList` | items as `ListItem` (position, url, name); only items visible on the page |
 | Any page below home | `BreadcrumbList` | positions 1..n in order, `item` URL on all but the last |
 | Listing page (blog, category) | `CollectionPage` / `Blog` + `ItemList` | items as short nodes (headline + url); no full Article fields needed |
 | Event, Product, Recipe, JobPosting, LocalBusiness | their own types | follow Google's feature docs exactly |
+
+## One graph per page
+- Render one `@graph` per page: `WebPage` (or ItemPage / CollectionPage / AboutPage / ContactPage) with `@id`
+  `<url>#webpage`, `isPartOf` → WebSite id, `breadcrumb` → `<url>#breadcrumb`, `mainEntity` → the page's entity id;
+  then the BreadcrumbList and the entity nodes. Rule `page-entity-missing` finds pages with only breadcrumb/site nodes,
+  `schema-dangling-id` finds `{"@id": …}` references defined nowhere on the crawl.
+- Give every page an image: when a page has no visual, a generated title card (1200×630) keeps `og:image` and
+  Article `image` filled.
+- Favicon (rule `favicon-missing`): Google shows it in results; serve a square PNG ≥ 48 px (multiples of 48).
 
 ## Ratings
 - `aggregateRating` only when the rating is visible on the page, from real users, with a minimum count you choose

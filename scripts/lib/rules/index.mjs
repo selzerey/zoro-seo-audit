@@ -31,5 +31,10 @@ export function runRules(ctx, { only, skip = [] } = {}) {
     findings = findings.filter((f) => !seen.has(f.url + f.detail) && seen.add(f.url + f.detail));
     if (findings.length) results.push({ id: r.id, cat: r.cat, severity: r.severity, tr: r.tr, en: r.en, findings });
   }
+  // A deliberately closed site (staging): per-page consequences of the switch are noise, keep only the site finding.
+  if (results.some((r) => r.id === "site-closed")) {
+    const noise = new Set(["sitemap-not-indexable", "sitemap-robots-blocked", "search-bot-blocked", "noindex-linked"]);
+    for (let i = results.length - 1; i >= 0; i--) if (noise.has(results[i].id)) results.splice(i, 1);
+  }
   return results.sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || b.findings.length - a.findings.length);
 }

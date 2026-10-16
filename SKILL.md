@@ -25,6 +25,8 @@ work: every rule exists because it found a real problem, and known false alarms 
    Options: `--format json`, `--lang en`, `--only technical,schema`, `--skip rule-id`, `--concurrency 2 --delay 300`
    (small hosts), `--check-links 1000`, `--ua "..."`.
    Severities: `error` fix now · `warn` should fix · `info` judge case by case.
+   Staging / pre-launch site closed with robots `Disallow: /` + noindex → one `site-closed` finding and the per-page
+   noise is dropped. To audit what search engines *will* see, open indexing on the staging server first (env switch).
 2. **Verify before fixing.** Open each error/warn on the live page (curl the HTML, screenshot at 1280 and 390 px for
    visual issues). Read `references/false-positives.md` — it lists alarms that look real but are not.
 3. **Fix at the source.** Find the template/component that renders the issue; fix once for all pages. Re-run the
@@ -43,11 +45,11 @@ work: every rule exists because it found a real problem, and known false alarms 
 ## Rules (scripts/lib/rules/)
 | Category | Rules |
 |---|---|
-| site | host-normalisation, robots-missing, robots-no-sitemap, search-bot-blocked, ai-bot-access, bot-wall |
+| site | site-closed, favicon-missing, host-normalisation, robots-missing, robots-no-sitemap, search-bot-blocked, ai-bot-access, bot-wall |
 | technical | status-error, redirect-chain, canonical-missing/-multiple/-relative/-target-bad/-elsewhere, sitemap-not-indexable, sitemap-robots-blocked, sitemap-missing, sitemap-lastmod-future, noindex-linked, lang-missing, mixed-content, slow-response |
 | links | internal-link-broken, internal-link-redirect, internal-nofollow, link-empty-text, weak-inbound, sitemap-orphan |
-| onpage | title-missing/-duplicate/-long, description-missing/-duplicate/-long, h1-missing/-multiple, img-alt-missing, img-no-dimensions, lcp-image-lazy, og-image-missing |
-| schema | jsonld-invalid, article-fields, author-fake-risk, date-future, date-order, sitemap-lastmod-drift, org-id-inconsistent, breadcrumb-positions, faq-howto-note |
+| onpage | title-missing/-duplicate/-near-duplicate/-no-brand/-long, description-missing/-duplicate/-long, h1-missing/-multiple, img-alt-missing, img-no-dimensions, lcp-image-lazy, og-image-missing |
+| schema | jsonld-invalid, article-fields, author-fake-risk, date-future, date-order, sitemap-lastmod-drift, org-id-inconsistent, breadcrumb-positions, page-entity-missing, schema-dangling-id, faq-howto-note |
 | content | thin-content, near-duplicate, ai-cliches (TR + EN) |
 
 Add a rule: one object `{ id, severity, tr, en, check(ctx) → [{url, detail}] }` in the matching file, plus a case in

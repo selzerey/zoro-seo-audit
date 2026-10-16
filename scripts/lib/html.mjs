@@ -44,6 +44,13 @@ export function extract(html, url) {
     .filter((l) => (l.getAttribute("rel") ?? "").toLowerCase().split(/\s+/).includes("canonical"))
     .map((l) => l.getAttribute("href") ?? "");
 
+  // Favicon candidates (rel="icon", "shortcut icon", "apple-touch-icon"); Google shows one next to results.
+  const icons = root
+    .querySelectorAll("link")
+    .filter((l) => /(^|\s)(icon|apple-touch-icon)(\s|$)/i.test(l.getAttribute("rel") ?? ""))
+    .map((l) => absolute(l.getAttribute("href") ?? "", base))
+    .filter(Boolean);
+
   const hreflang = root
     .querySelectorAll("link[hreflang]")
     .map((l) => ({ lang: (l.getAttribute("hreflang") ?? "").toLowerCase(), href: absolute(l.getAttribute("href") ?? "", base) }));
@@ -90,6 +97,8 @@ export function extract(html, url) {
     googlebot: (meta("googlebot") ?? "").toLowerCase(),
     ogImage: prop("og:image"),
     ogTitle: prop("og:title"),
+    siteName: prop("og:site_name"),
+    icons,
     canonicals,
     hreflang,
     h1: root.querySelectorAll("h1").map(text),
