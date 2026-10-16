@@ -133,4 +133,18 @@ export default [
     en: "Query-string URL in the sitemap (?…): often a filter/sort duplicate; confirm it is a deliberate self-canonical page",
     check: ({ sitemap }) => [...sitemap.urls.keys()].filter((u) => new URL(u).search).map((u) => finding(u)),
   },
+  {
+    id: "content-extractability",
+    severity: "warn",
+    tr: "Ham HTML'de içerik yok: boş uygulama kökü (#root/#__next/#app…) ya da yalnız script. Metin JavaScript ile geliyor; Google geç işler, çoğu yapay zekâ botu JS çalıştırmaz. Sunucu tarafında (SSR/SSG) içerik gönder",
+    en: "No content in the raw HTML: empty app root (#root/#__next/#app…) or scripts only. Text arrives via JavaScript; Google renders late and most AI bots do not run JS. Serve content server-side (SSR/SSG)",
+    // Limits adapted from seomator-geo-audit thresholds.json (extractability), Copyright (c) 2026 SEOmator — MIT.
+    check: ({ pages }) =>
+      [...pages].flatMap(([u, p]) => {
+        const s = p.facts?.shell;
+        if (!s || noindex(p.facts)) return [];
+        const shell = (s.emptyRoot && s.chars < 1200) || (!s.hasMain && s.chars < 50 && s.scripts > 0);
+        return shell ? [finding(u, `${s.emptyRoot ? `#${s.emptyRoot} empty, ` : ""}${s.chars} visible chars${s.hasMain ? "" : ", no <main>"}`)] : [];
+      }),
+  },
 ];

@@ -22,13 +22,64 @@ export function words(s) {
   return s.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
 }
 
-/** Body text without scripts, nav, header and footer: the page's own content. */
-function mainText(root) {
+/** Main (or body) without scripts, nav, header and footer: the page's own content. */
+function contentRoot(root) {
   const body = root.querySelector("main") ?? root.querySelector("body") ?? root;
   const clone = parse(body.toString());
   for (const el of clone.querySelectorAll(`${BLOCK_SKIP},nav,header,footer,[aria-hidden=true]`)) el.remove();
-  // structuredText breaks lines between block elements (textContent would glue "Title" + "First" into one word).
-  return clone.structuredText.replace(/\s+/g, " ").trim();
+  return clone;
+}
+
+// structuredText breaks lines between block elements (textContent would glue "Title" + "First" into one word).
+const flat = (el) => el.structuredText.replace(/\s+/g, " ").trim();
+
+/** Visible text of an element (scripts and styles dropped). */
+function visible(el) {
+  const c = parse(el.toString());
+  for (const x of c.querySelectorAll(BLOCK_SKIP)) x.remove();
+  return flat(c);
+}
+
+/**
+ * Prose split at headings: one row per section (heading text, level 1-6 or 0 before the first heading, word count) and
+ * the paragraph-level text blocks. Tables, lists and forms are left out: they are data, not passages to quote.
+ */
+function prose(clone) {
+  const c = parse(clone.toString());
+  for (const el of c.querySelectorAll("table,ul,ol,dl,form,figure,pre,button,select,textarea")) el.remove();
+  const sections = [];
+  const blocks = [];
+  for (const part of c.toString().split(/(?=<h[1-6][\s>])/i)) {
+    const p = parse(part);
+    const h = p.querySelector("h1,h2,h3,h4,h5,h6");
+    const heading = h ? text(h) : null;
+    const level = h ? Number(h.tagName[1]) : 0;
+    h?.remove();
+    const lines = p.structuredText.split(/\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+    const n = lines.reduce((s, l) => s + words(l).length, 0);
+    if (n || h) sections.push({ heading, level, words: n });
+    blocks.push(...lines);
+  }
+  return { sections, blocks };
+}
+
+// Client-rendered app roots (React, Next pages router, Vue, Nuxt, Gatsby, SvelteKit). "Empty" = under 50 visible chars
+// (limit from seomator-geo-audit thresholds.json, Copyright (c) 2026 SEOmator — MIT, THIRD_PARTY_NOTICES.md).
+const APP_ROOTS = ["root", "__next", "app", "__nuxt", "___gatsby", "svelte"];
+
+/** Raw-HTML shape for content extractability: an empty app root and little visible text = content needs JS. */
+function shell(root) {
+  const body = root.querySelector("body") ?? root;
+  const emptyRoot = APP_ROOTS.find((id) => {
+    const el = root.getElementById?.(id);
+    return el && visible(el).length < 50;
+  });
+  return {
+    emptyRoot: emptyRoot ?? null,
+    hasMain: !!root.querySelector('main,[role="main"]'),
+    chars: visible(body).length,
+    scripts: root.querySelectorAll("script[src]").length,
+  };
 }
 
 export function extract(html, url) {
@@ -85,7 +136,9 @@ export function extract(html, url) {
     }
   });
 
-  const body = mainText(root);
+  const clone = contentRoot(root);
+  const body = flat(clone);
+  const rel = (l, re) => re.test(l.getAttribute("rel") ?? "");
   return {
     url,
     lang: root.querySelector("html")?.getAttribute("lang") ?? null,
@@ -97,6 +150,16 @@ export function extract(html, url) {
     googlebot: (meta("googlebot") ?? "").toLowerCase(),
     ogImage: prop("og:image"),
     ogTitle: prop("og:title"),
+    twitterCard: meta("twitter:card") ?? prop("twitter:card"),
+    // RSS/Atom feeds declared in <head>.
+    feeds: root
+      .querySelectorAll("link")
+      .filter((l) => rel(l, /(^|\s)alternate(\s|$)/i) && /application\/(rss|atom)\+xml/i.test(l.getAttribute("type") ?? ""))
+      .map((l) => absolute(l.getAttribute("href") ?? "", base))
+      .filter(Boolean),
+    // Date signals outside JSON-LD: Open Graph article times and <time> elements.
+    metaDates: ["article:modified_time", "article:published_time", "og:updated_time"].map(prop).filter(Boolean),
+    timeCount: root.querySelectorAll("time").length,
     siteName: prop("og:site_name"),
     icons,
     canonicals,
@@ -115,6 +178,8 @@ export function extract(html, url) {
       : [],
     text: body,
     wordCount: words(body).length,
+    ...prose(clone),
+    shell: shell(root),
     htmlBytes: Buffer.byteLength(html),
   };
 }

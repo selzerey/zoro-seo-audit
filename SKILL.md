@@ -45,15 +45,19 @@ work: every rule exists because it found a real problem, and known false alarms 
 ## Rules (scripts/lib/rules/)
 | Category | Rules |
 |---|---|
-| site | site-closed, favicon-missing, host-normalisation, robots-missing, robots-no-sitemap, search-bot-blocked, ai-bot-access, bot-wall |
-| technical | status-error, redirect-chain, canonical-missing/-multiple/-relative/-target-bad/-elsewhere, sitemap-not-indexable, sitemap-robots-blocked, sitemap-missing, sitemap-lastmod-future, noindex-linked, lang-missing, mixed-content, slow-response |
+| site | site-closed, favicon-missing, host-normalisation, robots-missing, robots-no-sitemap, search-bot-blocked, ai-bot-access, bot-wall, llms-txt, https-hsts, feed-missing |
+| technical | status-error, redirect-chain, canonical-missing/-multiple/-relative/-target-bad/-elsewhere, sitemap-not-indexable, sitemap-robots-blocked, sitemap-missing, sitemap-lastmod-future, sitemap-query-url, noindex-linked, lang-missing, mixed-content, slow-response, content-extractability |
 | links | internal-link-broken, internal-link-redirect, internal-nofollow, link-empty-text, weak-inbound, sitemap-orphan |
-| onpage | title-missing/-duplicate/-near-duplicate/-no-brand/-long, description-missing/-duplicate/-long, h1-missing/-multiple, img-alt-missing, img-no-dimensions, lcp-image-lazy, og-image-missing |
-| schema | jsonld-invalid, article-fields, author-fake-risk, date-future, date-order, sitemap-lastmod-drift, org-id-inconsistent, breadcrumb-positions, page-entity-missing, schema-dangling-id, faq-howto-note |
-| content | thin-content, near-duplicate, ai-cliches (TR + EN) |
+| onpage | title-missing/-duplicate/-near-duplicate/-no-brand/-long, description-missing/-duplicate/-long, h1-missing/-multiple, img-alt-missing, img-no-dimensions, lcp-image-lazy, og-image-missing, twitter-card-missing |
+| schema | jsonld-invalid, article-fields, author-fake-risk, date-future, date-order, sitemap-lastmod-drift, org-id-inconsistent, breadcrumb-positions, page-entity-missing, schema-dangling-id, faq-howto-note, schema-required-props, schema-recommended-props |
+| content | thin-content, near-duplicate, ai-cliches (TR + EN), freshness-missing, citability (TR-aware sentence split) |
 
-Add a rule: one object `{ id, severity, tr, en, check(ctx) → [{url, detail}] }` in the matching file, plus a case in
-`scripts/tests/crawl.test.mjs` (a planted problem it must find and, if relevant, a trap it must ignore).
+AI-search rules (llms-txt, citability, content-extractability, schema props) are info/warn hints, not ranking
+factors; their limits and traps are in `references/false-positives.md`. Property table: `scripts/lib/data/`.
+`--lang` sets the report language and the sentence-split language when a page has no `<html lang>`.
+
+Add a rule: one object `{ id, severity, tr, en, check(ctx) → [{url, detail}] }` in the matching file, plus a test in
+`scripts/tests/` (a planted problem it must find and, if relevant, a trap it must ignore).
 
 ## References
 - `references/false-positives.md` — read before acting on any finding

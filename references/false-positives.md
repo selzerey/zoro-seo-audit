@@ -53,6 +53,24 @@ finding, confirm it on the live page. Each item below cost real time once.
 - Reading-level scores (Flesch etc.) are English formulas; meaningless for Turkish.
 - Link density "too high" on hub/category pages is their job.
 
+## AI search / GEO rules
+- `schema-required-props` / `schema-recommended-props`: Organization/Person/WebSite are merged per `@id` over the
+  crawl, so a short reference copy is fine if the full node is on a crawled page (home/about). If the full node lives
+  on an uncrawled page, raise `--max` before believing it. `sameAs` = real, owned profiles only; none → leave it out.
+- The Article suggestion skips tools, terms, listings, datasets, about/contact and FAQ pages (`NOT_ARTICLE_TYPES`).
+  A long page with only `WebPage` may still be a hub, not an article: decide by what the page is.
+- `freshness-missing`: tools, categories, legal and contact pages need no date. Act only on time-sensitive articles
+  (rates, laws, yearly lists) among the examples.
+- `content-extractability`: an empty `#app`/`#root` used as a modal/portal mount next to server-rendered content is
+  not flagged (body text ≥ 1200 chars). Confirm a real hit with `curl` — the text must be missing from raw HTML.
+- `citability`: word counts skip tables and lists. Glossary, legal and reference pages may legitimately run long
+  under one heading. Sentence split is heuristic: a period followed by a lower-case word is not a sentence end, so
+  text without capitals after periods reads as fewer, longer sentences.
+- `llms-txt` missing: optional, no search engine ranks with it. Only fix format/broken links when the file exists.
+- `https-hsts`: security hardening; no ranking effect. Silent on http and localhost. Add `preload` only on purpose.
+- `feed-missing` needs ≥3 article pages; a feed linked only from the blog index (not crawled) still counts as missing
+  — check the blog index `<head>`. `twitter-card-missing`: X falls back to og tags for a small card only.
+
 ## SERP-based data
 - Since Sep 2026 Google serves **poisoned SERPs** to scrapers (Nozzle research): full-looking pages with wrong results,
   5-11% of scraped SERPs. Rank trackers show fake drops that recover within ~3 days. Confirm any drop with Search

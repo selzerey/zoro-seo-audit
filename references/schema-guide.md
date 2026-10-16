@@ -33,6 +33,11 @@ Use JSON-LD. Markup must describe what is visible on the page. Validate with Goo
   Article `image` filled.
 - Favicon (rule `favicon-missing`): Google shows it in results; serve a square PNG ≥ 48 px (multiples of 48).
 
+## Required / recommended properties
+Rules `schema-required-props` (warn) and `schema-recommended-props` (info) read the table in
+`scripts/lib/data/schema-requirements.mjs` (adapted from seomator-geo-audit, MIT). Presence only; values are not
+validated. Article core fields stay in `article-fields`.
+
 ## Ratings
 - `aggregateRating` only when the rating is visible on the page, from real users, with a minimum count you choose
   (e.g. ≥5 votes). Never on Organization about itself.

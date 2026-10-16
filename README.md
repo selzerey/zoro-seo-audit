@@ -26,7 +26,7 @@ node scripts/indexnow.mjs submit --host example.com https://example.com/new-page
 
 ## Why another SEO audit
 Big rule sets (300+ checks) bury the few issues that matter under English-only heuristics and Lighthouse advice.
-This one keeps ~50 rules that found real problems on real sites, and documents the alarms that look real but are not
+This one keeps ~65 rules that found real problems on real sites, and documents the alarms that look real but are not
 (`references/false-positives.md`). Search data (GSC/Bing) drives priorities, not scraped rankings.
 
 ## Contributing
@@ -34,4 +34,4 @@ This one keeps ~50 rules that found real problems on real sites, and documents t
 - Enable the leak check once per clone: `git config core.hooksPath .githooks`. Put private words (project names,
   domains, people) in `.leak-words` (git-ignored); the hook blocks commits containing them or secret-shaped strings.
 
-MIT licensed.
+MIT licensed. Adapted third-party data and its license: `THIRD_PARTY_NOTICES.md`.

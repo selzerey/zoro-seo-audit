@@ -1,4 +1,5 @@
 // JSON-LD: parse errors, missing key fields, @id consistency, dates. Only checks with search impact or real breakage.
+import { ARTICLE_TYPES, ENTITY_TYPES, NOT_ARTICLE_TYPES, REQUIREMENTS } from "../data/schema-requirements.mjs";
 import { finding, indexable } from "./util.mjs";
 
 /** Every typed node in a JSON-LD document (handles @graph and nesting). `nested`: inside another typed node. */
@@ -25,6 +26,51 @@ const all = (pages) => [...pages].flatMap(([u, p]) => (p.facts?.jsonLd ?? []).fi
 const ARTICLE = ["Article", "NewsArticle", "BlogPosting"];
 // Types whose dateModified means "data changed", not "page changed" (do not compare with sitemap lastmod).
 const DATA_TYPES = ["Dataset", "DataCatalog", "Event", "Offer"];
+
+const filled = (v) => v != null && v !== "" && !(Array.isArray(v) && !v.length);
+/** Properties (or `a|b` alternatives) a node lacks. */
+const lacking = (n, props) => props.filter((k) => !k.split("|").some((x) => filled(n[x])));
+
+/**
+ * Missing required (`which` = "required") or recommended properties. Site entities (Organization, Person, WebSite…)
+ * are merged per @id / name over the whole crawl first: a short reference copy on one page is fine when the full node
+ * lives on another. Page entities (Product, Event…) are judged per page, top-level nodes only.
+ */
+export function missingProps(pages, which) {
+  const entityOrder = ["LocalBusiness", ...ENTITY_TYPES.filter((t) => t !== "LocalBusiness")];
+  const ents = new Map();
+  for (const [u, n] of all(pages)) {
+    const t = entityOrder.find((x) => has(n, x));
+    if (!t) continue;
+    const key = n["@id"] ?? (n.name ? `${t}: ${n.name}` : null);
+    if (!key) continue;
+    const e = ents.get(key) ?? { t, u, node: {} };
+    for (const [k, v] of Object.entries(n)) if (filled(v) && !filled(e.node[k])) e.node[k] = v;
+    ents.set(key, e);
+  }
+  const out = [...ents].flatMap(([key, e]) => {
+    const miss = lacking(e.node, REQUIREMENTS[e.t][which]);
+    return miss.length ? [finding(e.u, `${e.t} ${key}: ${miss.join(", ")}`)] : [];
+  });
+  for (const [u, n] of topLevel(pages)) {
+    const t = types(n).find((x) => REQUIREMENTS[x] && !ENTITY_TYPES.includes(x));
+    if (!t) continue;
+    const miss = lacking(n, REQUIREMENTS[t][which]);
+    if (miss.length) out.push(finding(u, `${t}: ${miss.join(", ")}`));
+  }
+  return out;
+}
+
+/** Long indexable pages with no Article-type and no "not an article" type (tool, term, listing, product…). */
+export function articleCandidates(pages, start, minWords = 800) {
+  return [...pages]
+    .filter(([u, p]) => u !== start && indexable(p) && p.facts.wordCount >= minWords)
+    .filter(([, p]) => {
+      const ts = (p.facts.jsonLd ?? []).filter((j) => j.ok).flatMap((j) => nodes(j.data).flatMap(types));
+      return !ts.some((t) => ARTICLE_TYPES.includes(t) || NOT_ARTICLE_TYPES.includes(t));
+    })
+    .map(([u, p]) => finding(u, `${p.facts.wordCount} words, no Article/BlogPosting`));
+}
 
 export default [
   {
@@ -170,5 +216,19 @@ export default [
       const doc = (s) => s.split("#")[0];
       return [...refs].filter(([id, u]) => !defined.has(id) && (doc(id) === doc(u) || pages.has(doc(id)))).map(([id, u]) => finding(u, id));
     },
+  },
+  {
+    id: "schema-required-props",
+    severity: "warn",
+    tr: "Yapısal veride zorunlu özellik eksik (Organization: name/url/logo, Product: offers, Event: startDate/location, Dataset: description…); bu türün zengin sonucu ya da varlık bilgisi oluşmaz",
+    en: "Structured data lacks a required property (Organization name/url/logo, Product offers, Event startDate/location, Dataset description…); no rich result / entity data for that type",
+    check: ({ pages }) => missingProps(pages, "required"),
+  },
+  {
+    id: "schema-recommended-props",
+    severity: "info",
+    tr: "Yapısal veride önerilen özellik eksik (Article: dateModified/publisher, Organization/Person: sameAs…) ya da uzun metinli sayfada Article türü yok. sameAs'e yalnız gerçek, kurumun/kişinin kendi profillerini yaz; gerçek profil yoksa uydurma, boş bırak",
+    en: "Structured data lacks a recommended property (Article dateModified/publisher, Organization/Person sameAs…) or a long page has no Article type. Put only real, owned profiles in sameAs; if none exist, leave it out, never invent",
+    check: ({ pages, start }) => [...missingProps(pages, "recommended"), ...articleCandidates(pages, start)],
   },
 ];

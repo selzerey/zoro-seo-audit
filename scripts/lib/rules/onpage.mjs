@@ -179,4 +179,12 @@ export default [
     en: "No og:image",
     check: ({ pages }) => facts(pages).filter(([, p]) => indexable(p) && !p.facts.ogImage).map(([u]) => finding(u)),
   },
+  {
+    id: "twitter-card-missing",
+    severity: "info",
+    tr: "og:image var ama twitter:card yok (X'te paylaşımlar büyük görselli kart olarak çıkmaz; summary_large_image önerilir)",
+    en: "og:image present but no twitter:card (X shows no large-image card; summary_large_image recommended)",
+    check: ({ pages }) => facts(pages).filter(([, p]) => indexable(p) && p.facts.ogImage && !p.facts.twitterCard).map(([u]) => finding(u)),
+  },
 ];
+
