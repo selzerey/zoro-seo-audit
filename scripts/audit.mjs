@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Usage: node scripts/audit.mjs <url> [--max 50] [--concurrency 4] [--delay 100] [--check-links 300]
 //        [--lang tr|en] [--format md|json] [--out file] [--only id,cat] [--skip id,id] [--ua "..."] [--quiet]
+//        [--stale-file facts.txt] [--placeholders key,key] [--dev-hosts preview.example.net,…]
 import fs from "node:fs";
 import { isMain, parseArgs } from "./lib/args.mjs";
 import { crawl } from "./lib/crawl.mjs";
 import { loadEnv } from "./lib/env.mjs";
 import { DEFAULT_UA, fetchChain, pool } from "./lib/fetch.mjs";
 import { toJson, toMarkdown } from "./lib/report.mjs";
+import { parseStale } from "./lib/rules/content.mjs";
 import { runRules } from "./lib/rules/index.mjs";
 
 /** The other host spellings of the site (http, www/non-www) and where they end up. */
@@ -65,6 +67,12 @@ export async function main(argv = process.argv.slice(2)) {
     log,
   });
   ctx.lang = a.lang ?? null;
+  // Optional lists: old values (stale-fact), literal shortcodes (placeholder-leak), preview hosts (link-dev-host).
+  const staleFile = a["stale-file"] ?? env.ZORO_STALE_FILE;
+  ctx.stale = [...(staleFile ? parseStale(fs.readFileSync(staleFile, "utf8")) : []), ...parseStale(env.ZORO_STALE_VALUES ?? "")];
+  const list = (v) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  ctx.placeholders = list(a.placeholders ?? env.ZORO_PLACEHOLDERS);
+  ctx.devHosts = list(a["dev-hosts"] ?? env.ZORO_DEV_HOSTS).map((h) => h.toLowerCase());
   ctx.probes = { hosts: await Promise.all(hostVariants(ctx.start).map((u) => fetchChain(u, { ua }))), favicon: await faviconProbe(ctx, ua), llms: await llmsProbe(ctx, ua) };
   const results = runRules(ctx, { only: a.only?.split(","), skip: a.skip?.split(",") ?? [] });
   const out = a.format === "json" ? toJson(ctx, results) : toMarkdown(ctx, results, { lang: a.lang ?? "tr" });

@@ -26,8 +26,18 @@ node scripts/indexnow.mjs submit --host example.com https://example.com/new-page
 
 ## Why another SEO audit
 Big rule sets (300+ checks) bury the few issues that matter under English-only heuristics and Lighthouse advice.
-This one keeps ~65 rules that found real problems on real sites, and documents the alarms that look real but are not
-(`references/false-positives.md`). Search data (GSC/Bing) drives priorities, not scraped rankings.
+This one keeps ~90 narrow, verifiable rules that found real problems on real sites, and documents the alarms that look
+real but are not (`references/false-positives.md`). Search data (GSC/Bing) drives priorities, not scraped rankings.
+
+Highlights: unrendered shortcodes and JS values (`{key}`, `NaN`, `undefined`), raw Markdown, mojibake (Turkish-safe),
+outdated values from a list you give it, robots.txt that is unreachable / malformed / blocks CSS-JS / contradicts
+Content-Signal, invalid `<head>` elements that silently drop the canonical, soft 404 (random-URL probe), canonical
+conflicts (header vs HTML, in body, to noindex, chains), snippet restrictions, build-stamped `lastmod` and
+`dateModified`, localhost/preview links, tracking parameters on internal links, click depth and nav-only pages.
+
+```bash
+node scripts/audit.mjs https://example.com/ --stale-file old-values.txt --placeholders yil,site_adi
+```
 
 ## Contributing
 - `npm test` must pass (unit tests + a local fake-site crawl).

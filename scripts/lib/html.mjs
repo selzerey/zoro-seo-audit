@@ -82,6 +82,99 @@ function shell(root) {
   };
 }
 
+// Elements the HTML parser accepts inside <head>; anything else (or text) ends the head there.
+const HEAD_OK = new Set(["title", "meta", "link", "script", "style", "base", "noscript", "template"]);
+const RAW_TEXT = new Set(["script", "style", "title", "textarea", "template"]);
+
+function attrs(s) {
+  const out = {};
+  for (const m of s.matchAll(/([^\s"'=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)) out[m[1].toLowerCase()] = m[2] ?? m[3] ?? m[4] ?? "";
+  return out;
+}
+
+/** Tags that steer indexing: lost when the parser has already closed <head> before them. */
+function critical(name, a) {
+  const rel = (a.rel ?? "").toLowerCase().split(/\s+/);
+  if (name === "link" && rel.includes("canonical")) return "canonical";
+  if (name === "link" && a.hreflang) return `hreflang ${a.hreflang}`;
+  if (name === "meta" && /^(robots|googlebot|description)$/i.test(a.name ?? "")) return `meta ${a.name.toLowerCase()}`;
+  if (name === "title") return "title";
+  return null;
+}
+
+/**
+ * Raw-HTML walk of <head> the way a browser (and Googlebot) parses it: the first element not allowed in <head>
+ * (div, img, iframe, p, stray text, or a <noscript> holding more than link/style/meta) closes the head, and every
+ * canonical / robots / hreflang / description after it lands in <body> and is ignored. DOM libraries keep such tags
+ * where they were written, so this works on the source text. Also counts canonicals written inside <body>.
+ */
+export function headScan(html) {
+  const re = /<!--[\s\S]*?-->|<![^>]*>|<(\/?)([a-zA-Z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+  const out = { invalid: null, lost: [], bodyCanonicals: 0 };
+  let state = "before"; // before | head | broken (closed early by an invalid element) | after | body
+  let last = 0;
+  let m;
+  while ((m = re.exec(html))) {
+    const between = html.slice(last, m.index);
+    last = re.lastIndex;
+    if (state === "head" && /\S/.test(between)) {
+      out.invalid = `text "${between.trim().slice(0, 30)}"`;
+      state = "broken";
+    }
+    if (!m[2]) continue; // comment, doctype
+    const name = m[2].toLowerCase();
+    const closing = m[1] === "/";
+    const a = closing ? {} : attrs(m[3]);
+    const skipTo = (tag) => {
+      const close = new RegExp(`</${tag}`, "gi");
+      close.lastIndex = re.lastIndex;
+      const end = close.exec(html)?.index ?? -1;
+      const inner = html.slice(re.lastIndex, end < 0 ? html.length : end);
+      re.lastIndex = last = end < 0 ? html.length : end;
+      return inner;
+    };
+    if (state === "before" && name === "head" && !closing) state = "head";
+    else if (name === "body" && !closing) state = "body";
+    else if (name === "head" && closing) state = state === "broken" ? "body" : state === "head" ? "after" : state;
+    else if (state === "head" && !closing && name === "noscript") {
+      const bad = [...skipTo("noscript").matchAll(/<([a-zA-Z][\w-]*)/g)].map((x) => x[1].toLowerCase()).find((t) => !["link", "style", "meta"].includes(t));
+      if (bad) {
+        out.invalid = `<noscript><${bad}>`;
+        state = "broken";
+      }
+      continue;
+    } else if (state === "head" && !closing && !HEAD_OK.has(name) && name !== "html") {
+      out.invalid = `<${name}>`;
+      state = "broken";
+    }
+    if (closing) continue;
+    const c = critical(name, a);
+    if (c && state === "broken") out.lost.push(c);
+    if (c === "canonical" && (state === "body" || state === "after")) out.bodyCanonicals++;
+    if (RAW_TEXT.has(name)) skipTo(name);
+  }
+  return out;
+}
+
+const LEAK_SKIP = `${BLOCK_SKIP},code,pre,kbd,samp,var,textarea,del,s,[hidden]`;
+
+/**
+ * Visible text lines of the whole body (nav and footer included: a leak there is as visible), without code samples,
+ * scripts, JSON-LD, struck-through text and hidden elements. A table row is one line ("2025 ¦ 17.002,12") so a value
+ * keeps its year next to it; headings and captions carry `heading: true` for context lookups.
+ */
+function visibleLines(root) {
+  const body = parse((root.querySelector("body") ?? root).toString());
+  for (const el of body.querySelectorAll(LEAK_SKIP)) el.remove();
+  for (const tr of body.querySelectorAll("tr")) tr.replaceWith(`<p>${tr.querySelectorAll("td,th").map(text).join(" ¦ ")}</p>`);
+  for (const h of body.querySelectorAll("h1,h2,h3,h4,h5,h6,caption")) h.set_content(`${h.innerHTML}`);
+  return body.structuredText
+    .split(/\n/)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .map((l) => (l.startsWith("") ? { text: l.slice(1).trim(), heading: true } : { text: l, heading: false }))
+    .filter((l) => l.text);
+}
+
 export function extract(html, url) {
   const root = parse(html, { comment: false, blockTextElements: { script: true, style: true, noscript: true } });
   const head = root.querySelector("head") ?? root;
@@ -110,8 +203,20 @@ export function extract(html, url) {
     const raw = a.getAttribute("href") ?? "";
     const rel = (a.getAttribute("rel") ?? "").toLowerCase();
     const label = text(a) || a.getAttribute("aria-label") || a.getAttribute("title") || a.querySelector("img")?.getAttribute("alt") || "";
-    return { raw, href: absolute(raw, base), nofollow: rel.includes("nofollow"), label: label.trim(), inChrome: !!a.closest("nav,header,footer") };
+    return { raw, href: absolute(raw, base), nofollow: rel.includes("nofollow"), label: label.trim(), inChrome: !!a.closest("nav,header,footer,aside") };
   });
+
+  // Navigation Google cannot follow: <a> without a real href but with an onclick, javascript: hrefs that navigate,
+  // and onclick handlers on other elements that change location. Buttons that open menus or tabs are not navigation.
+  const NAV_JS = /location|window\.open|navigate|router\.push/i;
+  const jsLinks = [
+    ...root.querySelectorAll("a").filter((a) => {
+      const h = (a.getAttribute("href") ?? "").trim();
+      const fake = !a.hasAttribute("href") || h === "" || h === "#" || /^javascript:/i.test(h);
+      return fake && (a.hasAttribute("onclick") || (/^javascript:/i.test(h) && NAV_JS.test(h)));
+    }),
+    ...root.querySelectorAll("[onclick]").filter((el) => el.tagName !== "A" && NAV_JS.test(el.getAttribute("onclick"))),
+  ].map((el) => `<${el.tagName.toLowerCase()}${el.hasAttribute("href") ? ` href="${el.getAttribute("href")}"` : ""} onclick> ${text(el).slice(0, 30)}`);
 
   const firstH2 = root.querySelector("h2")?.range[0] ?? null;
   const images = root.querySelectorAll("img").map((img, i) => ({
@@ -138,6 +243,14 @@ export function extract(html, url) {
 
   const clone = contentRoot(root);
   const body = flat(clone);
+  const inCode = (el) => !!el.closest("pre,code");
+  // Absolute addresses the page points at (links, assets, canonical, og, JSON-LD strings): dev-host leaks.
+  const refs = new Set();
+  for (const [sel, at] of [["a", "href"], ["link", "href"], ["img", "src"], ["script", "src"], ["iframe", "src"], ["source", "src"], ["form", "action"]])
+    for (const el of root.querySelectorAll(`${sel}[${at}]`)) if (!inCode(el)) refs.add(el.getAttribute(at).trim());
+  for (const m of metas) if (/^og:(url|image)$/i.test(m.getAttribute("property") ?? "")) refs.add((m.getAttribute("content") ?? "").trim());
+  for (const j of jsonLd) if (j.ok) JSON.stringify(j.data).replace(/"((?:https?|file):\/\/[^"]+)"/g, (_, v) => refs.add(v));
+  const nosnippet = clone.querySelectorAll("[data-nosnippet]").filter((el) => !el.parentNode?.closest?.("[data-nosnippet]"));
   const rel = (l, re) => re.test(l.getAttribute("rel") ?? "");
   return {
     url,
@@ -145,6 +258,16 @@ export function extract(html, url) {
     // Browsers use the first <title> anywhere in the document (streamed React pages may put it in <body>).
     title: text(head.querySelector("title")) || text(root.querySelector("title")),
     titleCount: root.querySelectorAll("title").length,
+    // <title> outside inline SVG (an SVG <title> is the icon's tooltip, not the page title).
+    pageTitles: root.querySelectorAll("title").filter((t) => !t.closest("svg")).length,
+    descriptionCount: metas.filter((m) => (m.getAttribute("name") ?? "").toLowerCase() === "description").length,
+    robotsMetas: metas
+      .filter((m) => /^(robots|googlebot)$/i.test(m.getAttribute("name") ?? ""))
+      .map((m) => ({ name: m.getAttribute("name").toLowerCase(), content: (m.getAttribute("content") ?? "").toLowerCase() })),
+    viewports: metas.filter((m) => (m.getAttribute("name") ?? "").toLowerCase() === "viewport").map((m) => m.getAttribute("content") ?? ""),
+    // <meta charset> (or http-equiv Content-Type with charset) within the first 1024 bytes, later, or absent.
+    charset: /<meta[^>]+charset\s*=/i.test(Buffer.from(html).subarray(0, 1024).toString("latin1")) ? "early" : /<meta[^>]+charset\s*=/i.test(html) ? "late" : null,
+    ogUrl: prop("og:url"),
     description: meta("description"),
     robots: (meta("robots") ?? "").toLowerCase(),
     googlebot: (meta("googlebot") ?? "").toLowerCase(),
@@ -178,6 +301,25 @@ export function extract(html, url) {
       : [],
     text: body,
     wordCount: words(body).length,
+    lines: visibleLines(root),
+    head: headScan(html),
+    // Only absolute forms can leak another host (relative URLs resolve to the page's own host).
+    refs: [...refs].filter((r) => /^(?:[a-z][\w+.-]*:|\/\/|\\\\|[a-z]:\\)/i.test(r)).slice(0, 300),
+    jsLinks,
+    // Same-host assets the page loads (robots.txt must let Googlebot fetch them to render the page).
+    resources: [
+      ...new Set(
+        [
+          ...root.querySelectorAll("script[src]").map((e) => e.getAttribute("src")),
+          ...root.querySelectorAll("img[src]").map((e) => e.getAttribute("src")),
+          ...root.querySelectorAll("link[href]").filter((l) => rel(l, /(^|\s)(stylesheet|preload|modulepreload)(\s|$)/i)).map((l) => l.getAttribute("href")),
+        ]
+          .map((s) => absolute(s ?? "", base))
+          .filter((s) => s && new URL(s).host === new URL(url).host),
+      ),
+    ].slice(0, 200),
+    // Characters of the page's own text inside data-nosnippet (hidden from snippets and AI Overviews).
+    nosnippetChars: nosnippet.reduce((n, el) => n + flat(el).length, 0),
     ...prose(clone),
     shell: shell(root),
     htmlBytes: Buffer.byteLength(html),

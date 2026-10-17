@@ -1,6 +1,6 @@
 // JSON-LD: parse errors, missing key fields, @id consistency, dates. Only checks with search impact or real breakage.
 import { ARTICLE_TYPES, ENTITY_TYPES, NOT_ARTICLE_TYPES, REQUIREMENTS } from "../data/schema-requirements.mjs";
-import { finding, indexable } from "./util.mjs";
+import { finding, indexable, uniformDay } from "./util.mjs";
 
 /** Every typed node in a JSON-LD document (handles @graph and nesting). `nested`: inside another typed node. */
 export function nodes(data, { withNesting = false } = {}) {
@@ -136,6 +136,23 @@ export default [
         if (!lm) return [];
         return lm.slice(0, 10) !== String(n.dateModified).slice(0, 10) ? [finding(u, `lastmod ${lm.slice(0, 10)} vs ${types(n)[0]} ${String(n.dateModified).slice(0, 10)}`)] : [];
       }),
+  },
+  {
+    id: "datemodified-uniform",
+    severity: "info",
+    tr: "Sayfaların %90'ı ya da fazlasında JSON-LD dateModified aynı gün: tarih derleme/istek anında basılıyor olabilir. Her deploy'da değişen dateModified güven kaybettirir; yalnız içerik değişince güncelle (Dataset/Event tarihleri hariç)",
+    en: "90%+ of pages share one JSON-LD dateModified day: likely stamped at build/request time. A dateModified that changes on every deploy loses trust; change it only with the content (Dataset/Event dates excluded)",
+    site: true,
+    check: ({ pages, start }) => {
+      const dates = [];
+      for (const [u, p] of pages) {
+        if (!indexable(p)) continue;
+        const own = topLevel(new Map([[u, p]])).map(([, n]) => n).find((n) => n.dateModified && !DATA_TYPES.some((t) => has(n, t)) && types(n).some((t) => ARTICLE.includes(t) || /WebPage$|Page$/.test(t)));
+        if (own) dates.push(String(own.dateModified).slice(0, 10));
+      }
+      const d = uniformDay(dates, { min: 10 });
+      return d ? [finding(start, `${d.n}/${d.of} pages dateModified = ${d.day}`)] : [];
+    },
   },
   {
     id: "org-id-inconsistent",

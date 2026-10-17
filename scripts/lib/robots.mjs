@@ -73,3 +73,41 @@ export const BOTS = [
   { ua: "Applebot-Extended", kind: "ai-training" },
   { ua: "CCBot", kind: "ai-training" },
 ];
+
+// Directives search engines document; Content-Signal (Cloudflare) and Content-Usage (IETF draft) are known extensions.
+const KNOWN = new Set(["user-agent", "allow", "disallow", "sitemap", "crawl-delay", "host", "clean-param", "content-signal", "content-usage", "request-rate", "visit-time"]);
+
+/**
+ * Problems a robots.txt parser trips on: HTML served instead of text, size over Google's 500 KiB limit, lines that
+ * are not `key: value`, unknown keys (`noindex:` in robots.txt is ignored since 2019), rules before any User-agent
+ * and relative Sitemap URLs. Comments and blank lines are fine.
+ */
+export function robotsSyntax(text, { type = "", bytes = Buffer.byteLength(text) } = {}) {
+  const out = [];
+  if (/html/i.test(type) || /^\s*<(!doctype|html)/i.test(text)) return ["served as HTML, not a robots.txt"];
+  if (bytes > 500 * 1024) out.push(`${Math.round(bytes / 1024)} KiB: Google reads only the first 500 KiB`);
+  let seenAgent = false;
+  text.split(/\r?\n/).forEach((raw, i) => {
+    const line = raw.replace(/^﻿/, "").replace(/#.*$/, "").trim();
+    if (!line) return;
+    const m = line.match(/^([A-Za-z-]+)\s*:\s*(.*)$/);
+    if (!m) return out.push(`line ${i + 1}: not "key: value" (${line.slice(0, 40)})`);
+    const key = m[1].toLowerCase();
+    if (!KNOWN.has(key)) out.push(`line ${i + 1}: unknown directive "${m[1]}"${key === "noindex" ? " (not supported in robots.txt)" : ""}`);
+    if (key === "user-agent") seenAgent = true;
+    else if ((key === "allow" || key === "disallow") && !seenAgent) out.push(`line ${i + 1}: ${m[1]} before any User-agent (ignored)`);
+    else if (key === "sitemap" && m[2] && !/^https?:\/\//i.test(m[2].trim())) out.push(`line ${i + 1}: Sitemap must be an absolute URL`);
+  });
+  return out;
+}
+
+/** Content-Signal lines (`search=yes, ai-input=no, ai-train=no`) merged, and whether Cloudflare manages the file. */
+export function contentSignals(text) {
+  const signals = {};
+  for (const m of text.matchAll(/^\s*content-signal\s*:\s*(.+)$/gim))
+    for (const part of m[1].replace(/#.*$/, "").split(",")) {
+      const [k, v] = part.split("=").map((s) => s?.trim().toLowerCase());
+      if (k && v) signals[k] = v;
+    }
+  return { signals, managed: /BEGIN Cloudflare Managed/i.test(text) };
+}

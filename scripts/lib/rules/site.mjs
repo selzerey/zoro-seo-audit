@@ -1,6 +1,6 @@
-// Site-wide checks: host normalisation, robots.txt, AI crawler access. Uses ctx.probes filled by audit.mjs.
-import { BOTS, isAllowed } from "../robots.mjs";
-import { finding, noindex, xRobotsNoindex } from "./util.mjs";
+// Site-wide checks: host normalisation, robots.txt (reachability, syntax, assets, Content-Signal), soft-404 probe, AI crawler access. Uses ctx.probes filled by audit.mjs.
+import { BOTS, contentSignals, isAllowed, robotsSyntax } from "../robots.mjs";
+import { finding, indexable, noindex, xRobotsNoindex } from "./util.mjs";
 
 /**
  * Site closed to search engines on purpose (staging / pre-launch): robots.txt blocks Googlebot at the start URL and
@@ -24,7 +24,26 @@ export function llmsFormat(body) {
   return out;
 }
 
-const isLocal = (host) => /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)$|\.localhost$/i.test(host);
+// Title or H1 of an error page served with 200 (Turkish + English wording).
+const NOT_FOUND = /(^|D)404(D|$)|sayfa bulunamad|aradığınız sayfa|sayfa (mevcut değil|yok)|page not found|not found/;
+
+/** Same-host assets robots.txt hides from Googlebot, grouped by folder ("/_next/static/chunks/" → 40 files). */
+export function blockedAssets({ pages, robots }) {
+  const dirs = new Map();
+  for (const [u, p] of pages)
+    for (const r of p.facts?.resources ?? []) {
+      if (isAllowed(robots, "Googlebot", r)) continue;
+      const dir = new URL(r).pathname.replace(/[^/]*$/, "");
+      const d = dirs.get(dir) ?? { files: new Set(), page: u };
+      d.files.add(r);
+      dirs.set(dir, d);
+    }
+  return [...dirs].map(([dir, d]) => ({ dir, count: d.files.size, example: [...d.files][0], page: d.page }));
+}
+
+export const isLocal = (host) => /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)$|\.localhost$/i.test(host);
+
+const unreachable = (s) => s === 0 || s === 429 || s >= 500;
 
 export default [
   {
@@ -64,9 +83,75 @@ export default [
   {
     id: "robots-missing",
     severity: "warn",
-    tr: "robots.txt yok ya da 200 dönmüyor",
-    en: "robots.txt missing or not 200",
-    check: ({ robotsStatus, origin }) => (robotsStatus === 200 ? [] : [finding(origin + "/robots.txt", `status ${robotsStatus}`)]),
+    tr: "robots.txt yok (4xx): Google her şeyi serbest sayar; Sitemap satırı için bir dosya koy",
+    en: "robots.txt missing (4xx): Google treats everything as allowed; add one for the Sitemap line",
+    check: ({ robotsStatus, origin }) => (robotsStatus === 200 || unreachable(robotsStatus) ? [] : [finding(origin + "/robots.txt", `status ${robotsStatus}`)]),
+  },
+  {
+    id: "robots-unreachable",
+    severity: "error",
+    tr: "robots.txt 5xx/429 dönüyor ya da yanıt vermiyor: Google bu durumda siteyi geçici olarak tamamen yasak sayar ve taramayı durdurur (tarayıcıda site normal görünür)",
+    en: "robots.txt returns 5xx/429 or does not answer: Google then treats the whole site as disallowed and stops crawling (the site looks fine in a browser)",
+    site: true,
+    check: ({ robotsStatus, origin }) => (unreachable(robotsStatus) ? [finding(origin + "/robots.txt", robotsStatus ? `status ${robotsStatus}` : "no response")] : []),
+  },
+  {
+    id: "robots-syntax",
+    severity: "warn",
+    tr: "robots.txt'te ayrıştırılamayan satır, bilinmeyen yönerge (robots.txt'te noindex desteklenmez), User-agent'tan önce kural, göreli Sitemap ya da HTML yanıt: o satırlar yok sayılır",
+    en: "robots.txt has unparsable lines, unknown directives (noindex is not supported there), rules before any User-agent, a relative Sitemap or an HTML body: those lines are ignored",
+    site: true,
+    check: ({ robotsTxt, origin }) => {
+      if (robotsTxt?.status !== 200) return [];
+      const p = robotsSyntax(robotsTxt.body, robotsTxt);
+      return p.length ? [finding(origin + "/robots.txt", `${p.slice(0, 5).join("; ")}${p.length > 5 ? ` (+${p.length - 5})` : ""}`)] : [];
+    },
+  },
+  {
+    id: "content-signal-conflict",
+    severity: "warn",
+    tr: "robots.txt Content-Signal satırı ya da Cloudflare'in yönettiği blok, botlara verilen izinle çelişiyor (ör. alıntı botları açık ama ai-input=no). Cloudflare robots.txt'yi kenar sunucuda değiştirir: depodaki dosya ile canlıdaki farklı olabilir",
+    en: "robots.txt Content-Signal or a Cloudflare-managed block contradicts the bot rules (e.g. citation bots allowed but ai-input=no). Cloudflare rewrites robots.txt at the edge: the repo file and the live one may differ",
+    site: true,
+    check: ({ robotsTxt, robots, start, origin }) => {
+      if (robotsTxt?.status !== 200) return [];
+      const { signals, managed } = contentSignals(robotsTxt.body);
+      const cite = BOTS.filter((b) => b.kind === "ai-search" || b.kind === "ai-user");
+      const open = cite.filter((b) => isAllowed(robots, b.ua, start)).map((b) => b.ua);
+      const shut = cite.filter((b) => !isAllowed(robots, b.ua, start)).map((b) => b.ua);
+      const out = [];
+      if (signals["ai-input"] === "no" && open.length) out.push(`ai-input=no while ${open.join(", ")} may crawl`);
+      if (signals.search === "no" && BOTS.some((b) => b.kind === "search" && isAllowed(robots, b.ua, start))) out.push("search=no while search bots may crawl");
+      if (managed && shut.length) out.push(`Cloudflare-managed block blocks ${shut.join(", ")}`);
+      return out.length ? [finding(origin + "/robots.txt", out.join("; "))] : [];
+    },
+  },
+  {
+    id: "robots-blocks-assets",
+    severity: "error",
+    tr: "robots.txt sayfaların yüklediği CSS/JS/görsel dosyalarını Googlebot'a kapatıyor: Google sayfayı eksik çizer (mobil uyum, içerik, görseller). Next.js'te tipik hata Disallow: /_next/",
+    en: "robots.txt blocks CSS/JS/image files the pages load: Google renders the page incomplete (mobile, content, images). Typical in Next.js: Disallow: /_next/",
+    site: true,
+    check: (ctx) => blockedAssets(ctx).map((b) => finding(b.example, `${b.count} file(s) under ${b.dir}; used by ${b.page}`)),
+  },
+  {
+    id: "soft-404",
+    severity: "error",
+    tr: "Soft 404: var olmayan bir adres 404/410 yerine 200 dönüyor (ya da ana sayfaya yönleniyor) veya 200 dönen bir sayfa \"bulunamadı\" diyor. Google bunları soft 404 sayar; silinen adresler dizinden düzgün çıkmaz",
+    en: "Soft 404: a made-up URL returns 200 (or redirects to the home page) instead of 404/410, or a 200 page says \"not found\". Google flags these; removed URLs do not leave the index cleanly",
+    check: ({ notFound, pages }) => {
+      const out = [];
+      if (notFound?.status === 200) {
+        const via = notFound.chain.length > 1 ? `redirects to ${notFound.finalUrl}, ` : "";
+        out.push(finding(notFound.url, `made-up URL: ${via}status 200${notFound.noindex ? " (noindex)" : ""}, title "${notFound.title ?? ""}"`));
+      }
+      for (const [u, p] of pages) {
+        if (!indexable(p) || p.fetch.chain.length > 1 || p.facts.wordCount >= 150) continue;
+        const said = [p.facts.title, ...(p.facts.h1 ?? [])].find((t) => NOT_FOUND.test((t ?? "").toLocaleLowerCase("tr")));
+        if (said) out.push(finding(u, `200 page titled "${said}" (${p.facts.wordCount} words)`));
+      }
+      return out;
+    },
   },
   {
     id: "robots-no-sitemap",

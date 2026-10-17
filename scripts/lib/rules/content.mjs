@@ -1,4 +1,4 @@
-// Content: thin pages, near-duplicates, AI boilerplate phrases (Turkish + English), date signals, citability.
+// Content: leaks (shortcodes, Markdown, mojibake, stale values), thin pages, near-duplicates, AI boilerplate, dates, citability.
 // Citability limits (400-word sections, 35-word sentences) adapted from seomator-geo-audit thresholds.json,
 // Copyright (c) 2026 SEOmator — MIT License (THIRD_PARTY_NOTICES.md).
 import { words } from "../html.mjs";
@@ -100,7 +100,169 @@ export function hasDate(facts) {
   return (facts.jsonLd ?? []).some((j) => j.ok && nodes(j.data).some((n) => n.dateModified || n.datePublished || n.uploadDate));
 }
 
+/** Visible text of a page as lines: title and description first (a leak there reaches the result snippet). */
+const lineTexts = (f) => [f.title, f.description, ...(f.lines ?? []).map((l) => l.text)].filter(Boolean);
+
+const L = "a-zçğıöşü";
+/**
+ * Unrendered template or shortcode syntax and leaked JavaScript values. Code samples (code/pre/kbd), scripts,
+ * JSON-LD and hidden elements never reach this text. `undefined` / `null` count only as a whole value (alone in a
+ * line or table cell, or next to a number, currency or unit), never as an English word in a sentence.
+ */
+export const PLACEHOLDERS = [
+  ["{{ }}", /\{\{[^{}\n]{1,60}\}\}/g],
+  ["${ }", /\$\{[^{}\n]{1,60}\}/g],
+  ["{key}", new RegExp(`\\{[${L}][${L}0-9_]{1,40}\\}`, "g")],
+  ["[object Object]", /\[object Object\]/g],
+  ["Invalid Date", /\bInvalid Date\b/g],
+  ["NaN", /(?<![\p{L}\p{N}])NaN(?![\p{L}\p{N}])/gu],
+  ["TODO/FIXME", /\b(?:TODO|FIXME)\b(?=\s*[:(])|\bFIXME\b/g],
+  ["lorem ipsum", /lorem ipsum/gi],
+  ["%s", /(?<![\p{L}\p{N}%])%[sd](?![\p{L}\p{N}])/gu],
+  ["undefined/null", /(?:^|¦)\s*(?:undefined|null)\s*(?=¦|$)|[\d₺$€%]\s*(?:undefined|null)\b|\b(?:undefined|null)\s*(?:[₺$€%]|TL\b)/g],
+];
+
+/** Placeholder hits of a page: [pattern, sample] pairs. `extra` = literal shortcode spellings from the settings. */
+export function placeholderHits(f, extra = []) {
+  const out = [];
+  const lits = extra.map((x) => (/^[{[<%$]/.test(x) ? x : `{${x}}`));
+  for (const line of lineTexts(f)) {
+    for (const [name, re] of PLACEHOLDERS) for (const m of line.matchAll(re)) out.push([name, m[0].replace(/¦/g, "").trim() || name]);
+    for (const lit of lits) if (line.includes(lit)) out.push(["listed", lit]);
+  }
+  return out;
+}
+
+/**
+ * Raw Markdown or block syntax that reached the page. Unambiguous forms ([text](url), "## " line starts, ::: / ::
+ * blocks, |---| table rules) count once; **bold** / __bold__ need two hits, since a lone pair of stars can be typed on
+ * purpose. Single stars (footnotes, "*Vergi dahil") never count.
+ */
+export function markdownHits(f) {
+  const strong = [];
+  let soft = 0;
+  const STRONG = [
+    ["[text](url)", /\[[^\]\n]{1,100}\]\((?:https?:\/\/|\/)[^)\s]*\)/g],
+    ["## heading", /^#{1,6}\s+\p{L}/gu],
+    [":::block", new RegExp(`(?:^|\\s):{2,3}[${L}][\\w-]*`, "gu")],
+    ["|---|", /\|\s*:?-{3,}:?\s*\|/g],
+  ];
+  for (const line of (f.lines ?? []).map((l) => l.text)) {
+    for (const [name, re] of STRONG) for (const m of line.matchAll(re)) strong.push(`${name}: ${m[0].trim().slice(0, 40)}`);
+    soft += (line.match(/\*\*(?=\S)[^*\n]*\p{L}[^*\n]*?(?<=\S)\*\*/gu) ?? []).length;
+    soft += (line.match(/(?<![\p{L}\p{N}_])__(?=\S)[^_\n]*\p{L}[^_\n]* [^_\n]*(?<=\S)__(?![\p{L}\p{N}_])/gu) ?? []).length;
+  }
+  if (soft >= 2) strong.push(`**bold** ×${soft}`);
+  return strong;
+}
+
+/**
+ * UTF-8 bytes shown as Latin-1 / Windows-1252: "Ã¼" (ü), "Ã§" (ç), "Ä±" (ı), "ÅŸ" (ş), "ÄŸ" (ğ), "Ä°" (İ), "â€™" (’) and
+ * the replacement character U+FFFD. Real Turkish letters (ç ğ ı İ ö ş ü â î û) and words like "SÃO" never match.
+ */
+export const MOJIBAKE = /Ã[\u0080-¿ŒœŠšŸŽžƒˆ˜–—‘-„†-•…‰‹›€™]|[ÄÅ][\u0080-¿ŒœŠšŸŽž‘-„™]|â€|�/g;
+
+export function mojibakeHits(f) {
+  return lineTexts(f).flatMap((l) => [...l.matchAll(MOJIBAKE)].map((m) => l.slice(Math.max(0, m.index - 12), m.index + 14)));
+}
+
+/**
+ * Old values from a stale-facts list. One entry per line: `label: old1 | old2` or just `old1 | old2`; `#` starts a
+ * comment line. A JSON array of { label, old: [...] } works too. Inline settings separate entries with ";".
+ */
+export function parseStale(text = "") {
+  const t = text.trim();
+  if (!t) return [];
+  if (/^[[{]/.test(t)) {
+    const j = JSON.parse(t);
+    const rows = Array.isArray(j) ? j : Object.entries(j).map(([label, old]) => ({ label, old }));
+    return rows.map((r) => ({ label: r.label ?? r.key ?? "", values: [].concat(r.old ?? r.values ?? []).map(String).filter(Boolean) })).filter((r) => r.values.length);
+  }
+  return t
+    .split(/\r?\n|;/)
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"))
+    .map((l) => {
+      const m = l.match(/^([^:|]+?):\s+(.+)$/);
+      const vals = (m ? m[2] : l).split("|").map((v) => v.trim()).filter(Boolean);
+      return { label: m ? m[1].trim() : vals[0], values: vals };
+    })
+    .filter((r) => r.values.length);
+}
+
+// A line (or its section heading / table caption) about the past: an earlier year or history wording.
+const HISTORY = /geçmiş|önceki|eski|tarihçe|geçen yıl|iken\b|idi\b|previous|former|last year|history|was\b/i;
+const pastYear = (s, year) => [...s.matchAll(/(?<!\d)(19[5-9]\d|20\d\d)(?!\d)/g)].some((m) => Number(m[1]) < year);
+
+/** Old values still on the page outside a past-year context: [label, value, line] rows. */
+export function staleHits(f, stale, year = new Date().getFullYear()) {
+  const out = [];
+  const lines = f.lines ?? [];
+  const res = stale.flatMap((s) => s.values.map((v) => [s.label, v, new RegExp(`(?<![\\p{L}\\p{N}])${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{N}]|[.,]\\p{N})`, "u")]));
+  let heading = "";
+  for (const l of lines) {
+    if (l.heading) heading = l.text;
+    for (const [label, v, re] of res) {
+      if (!re.test(l.text)) continue;
+      const ctx = `${heading} ${l.text}`;
+      if (pastYear(ctx, year) || HISTORY.test(l.text)) continue;
+      out.push([label, v, l.text.slice(0, 80)]);
+    }
+  }
+  return out;
+}
+
 export default [
+  {
+    id: "placeholder-leak",
+    severity: "error",
+    tr: "Sayfada işlenmemiş kısa kod / şablon ya da JavaScript değeri görünüyor ({yil}, {{ad}}, ${x}, undefined, NaN, [object Object], lorem ipsum, TODO:). Kod örnekleri (pre/code), script ve JSON-LD sayılmaz",
+    en: "Unrendered shortcode / template or leaked JavaScript value is visible ({year}, {{name}}, ${x}, undefined, NaN, [object Object], lorem ipsum, TODO:). Code samples (pre/code), scripts and JSON-LD are excluded",
+    check: ({ pages, placeholders = [] }) =>
+      [...pages].flatMap(([u, p]) => {
+        if (!p.facts || p.fetch.status !== 200) return [];
+        const hits = placeholderHits(p.facts, placeholders);
+        return hits.length ? [finding(u, [...new Set(hits.map(([, s]) => s))].slice(0, 4).join(", "))] : [];
+      }),
+  },
+  {
+    id: "markdown-leak",
+    severity: "warn",
+    tr: "Ham Markdown ya da özel blok sözdizimi sayfaya çıkmış ([metin](adres), satır başında ##, ::: blokları, |---|, birden çok **kalın**): içerik hattında işlenmeden kalan parça var",
+    en: "Raw Markdown or custom block syntax reached the page ([text](url), ## at line start, ::: blocks, |---|, several **bold**): part of the content pipeline did not render",
+    check: ({ pages }) =>
+      [...pages].flatMap(([u, p]) => {
+        if (!p.facts || p.fetch.status !== 200) return [];
+        const hits = markdownHits(p.facts);
+        return hits.length ? [finding(u, `${hits.length}: ${hits.slice(0, 3).join(" · ")}`)] : [];
+      }),
+  },
+  {
+    id: "mojibake",
+    severity: "error",
+    tr: "Bozuk karakter (mojibake): UTF-8 metin Latin-1/Windows-1252 diye okunmuş (Ã¼, Ã§, Ä±, ÅŸ, â€™) ya da � var. Kaynak veri, veritabanı bağlantısı ya da dosya kodlamasını düzelt",
+    en: "Mojibake: UTF-8 text decoded as Latin-1/Windows-1252 (Ã¼, Ã§, Ä±, ÅŸ, â€™) or � present. Fix the source data, database connection or file encoding",
+    check: ({ pages }) =>
+      [...pages].flatMap(([u, p]) => {
+        if (!p.facts) return [];
+        const hits = mojibakeHits(p.facts);
+        return hits.length >= 2 ? [finding(u, `${hits.length}: ${hits.slice(0, 2).map((h) => `"${h}"`).join(", ")}`)] : [];
+      }),
+  },
+  {
+    id: "stale-fact",
+    severity: "warn",
+    tr: "Eskimiş değer hâlâ sayfada (listede verilen eski oran/tutar/tarih, geçmiş yıl bağlamı dışında). Liste --stale-file ya da ZORO_STALE_FILE / ZORO_STALE_VALUES ile verilir; liste yoksa kural çalışmaz",
+    en: "An outdated value is still on the page (old rate/amount/date from the list, outside a past-year context). List via --stale-file or ZORO_STALE_FILE / ZORO_STALE_VALUES; silent without a list",
+    check: ({ pages, stale = [] }) =>
+      !stale.length
+        ? []
+        : [...pages].flatMap(([u, p]) => {
+            if (!indexable(p)) return [];
+            const hits = staleHits(p.facts, stale);
+            return hits.length ? [finding(u, hits.slice(0, 3).map(([l, v, line]) => `${l === v ? "" : `${l}: `}${v} in "${line}"`).join("; "))] : [];
+          }),
+  },
   {
     id: "thin-content",
     severity: "info",

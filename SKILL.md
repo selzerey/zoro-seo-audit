@@ -23,7 +23,7 @@ work: every rule exists because it found a real problem, and known false alarms 
 1. **Crawl audit**
    `node scripts/audit.mjs https://example.com/ --max 100 --out audit.md`
    Options: `--format json`, `--lang en`, `--only technical,schema`, `--skip rule-id`, `--concurrency 2 --delay 300`
-   (small hosts), `--check-links 1000`, `--ua "..."`.
+   (small hosts), `--check-links 1000`, `--ua "..."`, `--stale-file`, `--placeholders`, `--dev-hosts` (below).
    Severities: `error` fix now · `warn` should fix · `info` judge case by case.
    Staging / pre-launch site closed with robots `Disallow: /` + noindex → one `site-closed` finding and the per-page
    noise is dropped. To audit what search engines *will* see, open indexing on the staging server first (env switch).
@@ -45,16 +45,22 @@ work: every rule exists because it found a real problem, and known false alarms 
 ## Rules (scripts/lib/rules/)
 | Category | Rules |
 |---|---|
-| site | site-closed, favicon-missing, host-normalisation, robots-missing, robots-no-sitemap, search-bot-blocked, ai-bot-access, bot-wall, llms-txt, https-hsts, feed-missing |
-| technical | status-error, redirect-chain, canonical-missing/-multiple/-relative/-target-bad/-elsewhere, sitemap-not-indexable, sitemap-robots-blocked, sitemap-missing, sitemap-lastmod-future, sitemap-query-url, noindex-linked, lang-missing, mixed-content, slow-response, content-extractability |
-| links | internal-link-broken, internal-link-redirect, internal-nofollow, link-empty-text, weak-inbound, sitemap-orphan |
+| site | site-closed, favicon-missing, host-normalisation, robots-missing, robots-unreachable, robots-syntax, robots-blocks-assets, robots-no-sitemap, content-signal-conflict, soft-404 (random-URL probe + 200 "not found" pages), search-bot-blocked, ai-bot-access, bot-wall, llms-txt, https-hsts, feed-missing |
+| technical | status-error, redirect-chain, canonical-missing/-multiple/-relative/-target-bad/-elsewhere, canonical-header-conflict, canonical-outside-head, canonical-noindex-conflict, canonical-chain, head-invalid-element, head-duplicate-meta, charset-missing, viewport-missing, snippet-restricted, robots-directive-conflict, sitemap-not-indexable, sitemap-robots-blocked, sitemap-missing, sitemap-lastmod-future, sitemap-lastmod-uniform, sitemap-query-url, noindex-linked, lang-missing, mixed-content, slow-response, content-extractability |
+| links | internal-link-broken, internal-link-redirect, internal-nofollow, link-empty-text, link-not-crawlable, link-dev-host, internal-link-tracking-params, inbound-chrome-only (was weak-inbound), click-depth, sitemap-orphan |
 | onpage | title-missing/-duplicate/-near-duplicate/-no-brand/-long, description-missing/-duplicate/-long, h1-missing/-multiple, img-alt-missing, img-no-dimensions, lcp-image-lazy, og-image-missing, twitter-card-missing |
-| schema | jsonld-invalid, article-fields, author-fake-risk, date-future, date-order, sitemap-lastmod-drift, org-id-inconsistent, breadcrumb-positions, page-entity-missing, schema-dangling-id, faq-howto-note, schema-required-props, schema-recommended-props |
-| content | thin-content, near-duplicate, ai-cliches (TR + EN), freshness-missing, citability (TR-aware sentence split) |
+| schema | jsonld-invalid, article-fields, author-fake-risk, date-future, date-order, sitemap-lastmod-drift, datemodified-uniform, org-id-inconsistent, breadcrumb-positions, page-entity-missing, schema-dangling-id, faq-howto-note, schema-required-props, schema-recommended-props |
+| content | placeholder-leak, markdown-leak, mojibake (TR-safe), stale-fact (needs a list), thin-content, near-duplicate, ai-cliches (TR + EN), freshness-missing, citability (TR-aware sentence split) |
 
 AI-search rules (llms-txt, citability, content-extractability, schema props) are info/warn hints, not ranking
 factors; their limits and traps are in `references/false-positives.md`. Property table: `scripts/lib/data/`.
 `--lang` sets the report language and the sentence-split language when a page has no `<html lang>`.
+
+Optional lists (CLI flag or `.env`): `--stale-file facts.txt` / `ZORO_STALE_FILE` / `ZORO_STALE_VALUES` — old values
+for `stale-fact`, one entry per line `label: old1 | old2` (inline: entries split by `;`); without a list the rule is
+silent. `--placeholders yil,site_adi` / `ZORO_PLACEHOLDERS` — exact shortcode names for `placeholder-leak`.
+`--dev-hosts vercel.app,preview.example.net` / `ZORO_DEV_HOSTS` — preview hosts for `link-dev-host`. Local audits
+(`http://localhost:3000/`) are fine: the audited host never counts as a dev-host leak.
 
 Add a rule: one object `{ id, severity, tr, en, check(ctx) → [{url, detail}] }` in the matching file, plus a test in
 `scripts/tests/` (a planted problem it must find and, if relevant, a trap it must ignore).
@@ -65,6 +71,10 @@ Add a rule: one object `{ id, severity, tr, en, check(ctx) → [{url, detail}] }
 - `references/content-quality.md` — honest E-E-A-T, AI text clean-up, YMYL sourcing
 - `references/schema-guide.md` — which structured data matters, entity `@id` pattern
 - `references/ai-search.md` — AI crawler access, citation-friendly writing, measuring AI visibility
+- `references/ai-visibility.md` — fixed question set, monthly assistant check, honest reporting language
+- `references/competitor-serp.md` — read the top results for one query, coverage table, format match
+- `references/topic-clusters.md` — one primary query per page, hub/spoke links, new-page linking
+- `references/eeat-checklist.md` — yes/partly/no/unclear review with evidence, YMYL trust items, no scores
 - `references/api-setup.md` — Google/Bing/IndexNow keys
 
 ## Guardrails

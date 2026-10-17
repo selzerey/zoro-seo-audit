@@ -39,8 +39,8 @@ export async function readSitemaps(starts, { ua, limit = 50000, log = () => {} }
   return { sitemaps: [...seen], urls, problems };
 }
 
-const sameSite = (a, b) => new URL(a).host.replace(/^www\./, "") === new URL(b).host.replace(/^www\./, "");
-const isPageLike = (u) => !/\.(pdf|jpe?g|png|gif|webp|avif|svg|ico|css|js|mjs|json|xml|txt|zip|gz|mp4|mp3|woff2?|ttf)(\?|$)/i.test(new URL(u).pathname);
+export const sameSite = (a, b) => new URL(a).host.replace(/^www\./, "") === new URL(b).host.replace(/^www\./, "");
+export const isPageLike = (u) => !/\.(pdf|jpe?g|png|gif|webp|avif|svg|ico|css|js|mjs|json|xml|txt|zip|gz|mp4|mp3|woff2?|ttf)(\?|$)/i.test(new URL(u).pathname);
 
 const CHALLENGE = /captcha|challenge|verify you are human|robot olmadığ|doğrulama|just a moment|access denied|attention required/i;
 
@@ -57,7 +57,9 @@ export function botWalled(pages) {
     const f = p.facts;
     if (!f) continue;
     const ni = /noindex/.test(`${f.robots} ${p.fetch.headers?.["x-robots-tag"] ?? ""}`);
-    if (ni && f.title) byTitle.set(f.title, [...(byTitle.get(f.title) ?? []), u]);
+    // A challenge screen is short; a noindex tool page filled in by JavaScript (?a=x) can be byte-identical across
+    // URLs too, but it carries the tool's full text.
+    if (ni && f.title && (f.wordCount ?? 0) < 150) byTitle.set(f.title, [...(byTitle.get(f.title) ?? []), u]);
   }
   // Many URLs with one noindex title are a wall only when they also serve the same screen: a challenge page has the
   // same size everywhere, while parameterised noindex tool pages (?a=x) share a title but differ in content.
@@ -70,16 +72,30 @@ export function botWalled(pages) {
   return [...out];
 }
 
+/**
+ * Asks for an address that cannot exist. A site that answers 200 (or sends it to the home page) has no real 404:
+ * every mistyped or deleted URL looks like a live page to Google (site-wide soft 404).
+ */
+export async function notFoundProbe(origin, { ua } = {}) {
+  const url = `${origin}/zoro-yok-${Math.random().toString(36).slice(2, 10)}`;
+  const r = await fetchChain(url, { ua });
+  const html = r.status === 200 && /html/.test(r.headers["content-type"] ?? "") ? extract(r.body, r.finalUrl) : null;
+  return { url, status: r.status, finalUrl: r.finalUrl, chain: r.chain, title: html?.title ?? null, noindex: /noindex/.test(`${html?.robots ?? ""} ${r.headers["x-robots-tag"] ?? ""}`) };
+}
+
 export async function crawl(start, { max = 50, concurrency = 4, delay = 100, ua, checkLinks = 300, wallPause = 30000, wallDelay = 1500, log = () => {} } = {}) {
   const origin = new URL(start).origin;
   const robotsRes = await fetchChain(origin + "/robots.txt", { ua });
   const robots = parseRobots(robotsRes.status === 200 ? robotsRes.body : "");
+  const robotsTxt = { status: robotsRes.status, type: robotsRes.headers["content-type"] ?? "", body: robotsRes.status === 200 ? robotsRes.body : "", bytes: Buffer.byteLength(robotsRes.body ?? "") };
+  const notFound = await notFoundProbe(origin, { ua });
   const sm = await readSitemaps(robots.sitemaps.length ? robots.sitemaps : [origin + "/sitemap.xml"], { ua, log });
 
   const pages = new Map();
   const queued = new Set([start]);
   let frontier = [start];
-  const sitemapRest = [...sm.urls.keys()].filter((u) => !queued.has(u));
+  // Sitemap URLs on another host (a sitemap built with the wrong base URL) are reported, not crawled as this site.
+  const sitemapRest = [...sm.urls.keys()].filter((u) => !queued.has(u) && sameSite(u, start));
   while (pages.size < max && (frontier.length || sitemapRest.length)) {
     if (!frontier.length) frontier = sitemapRest.splice(0, max - pages.size).filter((u) => !pages.has(u));
     const batch = frontier.splice(0, Math.min(max - pages.size, concurrency * 4));
@@ -139,5 +155,5 @@ export async function crawl(start, { max = 50, concurrency = 4, delay = 100, ua,
   );
   checked.forEach((r) => linkStatus.set(r.url, { status: r.status, chain: r.chain }));
 
-  return { start, origin, robots, robotsStatus: robotsRes.status, sitemap: sm, pages, linkStatus, uncheckedLinks: targets.size - toCheck.length };
+  return { start, origin, robots, robotsStatus: robotsRes.status, robotsTxt, notFound, sitemap: sm, pages, linkStatus, uncheckedLinks: targets.size - toCheck.length };
 }

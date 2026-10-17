@@ -71,6 +71,80 @@ finding, confirm it on the live page. Each item below cost real time once.
 - `feed-missing` needs ≥3 article pages; a feed linked only from the blog index (not crawled) still counts as missing
   — check the blog index `<head>`. `twitter-card-missing`: X falls back to og tags for a small card only.
 
+## Leaks and encoding
+- `placeholder-leak` reads only visible text: `<pre>`, `<code>`, `<kbd>`, `<samp>`, `<var>`, `<textarea>`, scripts,
+  JSON-LD, `<del>`/`<s>` and `[hidden]` are skipped, so a tutorial showing `{{ name }}` or `${x}` in a code block is
+  fine. `undefined`/`null` count only as a whole value (alone in a line or table cell, or next to a number, ₺, $, €,
+  %, TL); "null hypothesis" in prose is not a leak. `TODO` needs a following `:` or `(` (Spanish "TODO" = "all").
+  `{word}` in prose is reported: a page that explains a template in running text ("write {ad} here") should put the
+  sample in `<code>`. Exact shortcode names can be listed with `--placeholders` / `ZORO_PLACEHOLDERS`.
+- `markdown-leak`: single stars (footnotes, "Fiyat*") never count, one `**bold**` pair is ignored (two or more are
+  reported), `std::vector` and times like `10:30` do not match the `::block` pattern.
+- `mojibake` needs two hits. Turkish letters (ç ğ ı İ ö ş ü â î û), German Ä and Portuguese "SÃO" do not match:
+  only Ã/Ä/Å followed by a Latin-1/Windows-1252 continuation character, `â€` and U+FFFD do. A single U+FFFD may be a
+  broken emoji in user content.
+- `charset-missing` is silent when the `Content-Type` header carries `charset=`; the header wins over the meta tag.
+
+## Stale values
+- `stale-fact` is silent without a list (`--stale-file`, `ZORO_STALE_FILE`, `ZORO_STALE_VALUES`). A value is skipped
+  when its line (a table row is one line) or the section heading above it holds an earlier year, or the line uses
+  history wording (önceki, eski, geçmiş, tarihçe, iken, idi, previous, former). Year-by-year tables are therefore
+  quiet. A sentence that mentions the old value without a year ("eskiden 17.002 TL'ydi" written another way) can
+  still be reported: read the line before editing. Number boundaries are strict (`17.002,12` does not match inside
+  `117.002,12`).
+
+## robots.txt and directives
+- `robots-missing` = 4xx (harmless: everything allowed). `robots-unreachable` = 5xx, 429 or no answer (serious:
+  Google stops crawling). A local dev server restarting mid-audit can produce a one-off 5xx; re-run before acting.
+- `robots-syntax` knows `Content-Signal`, `Content-Usage`, `Crawl-delay`, `Host`, `Clean-param` (Yandex) as valid.
+  A BOM at the start is accepted.
+- `content-signal-conflict`: Cloudflare's default `search=yes, ai-train=no` is not a conflict, and a managed block
+  that only blocks training bots (GPTBot, ClaudeBot, CCBot…) is a choice, not a conflict. The live file is what
+  counts: Cloudflare can add its block at the edge, so the repository's robots.txt may look clean.
+- `robots-blocks-assets` checks same-host assets only; another host (CDN) has its own robots.txt.
+- `snippet-restricted`: `max-snippet:-1` is unlimited (fine). `X-Robots-Tag: otherbot: nosnippet` does not apply to
+  Googlebot. `data-nosnippet` on a small box (price note, ad) is fine; the rule needs ≥ 50 % of the main text.
+- `robots-directive-conflict` reports only opposite pairs (index/noindex, follow/nofollow, all/none). The same
+  `noindex` in two places is redundant, not a conflict.
+
+## Canonical, head and 404
+- `canonical-noindex-conflict` "noindex + canonical → X": parameter variants (`?a=…`, `?sayfa=2`) are often made
+  noindex *and* canonicalised on purpose. Google treats the pair as contradictory and picks one; the risk is small
+  but real (the noindex can be carried to X). Keep one signal: either a canonical to X, or noindex with a
+  self-canonical. "Canonical target is noindex" is always worth fixing: the canonical points at a page that cannot
+  be indexed. Findings are grouped per target.
+- `canonical-outside-head` / `head-invalid-element` read the raw HTML. Frameworks that stream metadata into
+  `<body>` for non-bot user agents (some Next.js versions) can show these to the audit UA but not to Googlebot:
+  re-fetch with `--ua` set to a Googlebot string from your own machine and compare before changing templates.
+- `head-invalid-element` lists only critical tags after the break (canonical, robots, hreflang, description, title).
+  `<noscript>` holding only `<link>`, `<style>` or `<meta>` is valid; a GTM `<noscript><iframe>` belongs in `<body>`.
+- `soft-404`: the probe asks for a random `/zoro-yok-…` path once. A 301/308 to the same path with a slash that then
+  answers 404 is correct. Per page, only short indexable pages whose title or H1 says "not found" count; noindex
+  search pages with "Sonuç bulunamadı" and long articles about 404 errors are skipped.
+
+## Dates
+- `sitemap-lastmod-uniform` needs ≥ 20 dated URLs and ≥ 90 % on one day. A site that really published everything in
+  one launch day matches too: check whether the date moves on the next deploy. `datemodified-uniform` needs ≥ 10
+  pages and skips Dataset/Event/Offer dates.
+
+## Links and architecture
+- `link-dev-host`: the audited host is never a leak, so a local audit of `http://localhost:3401/` does not flag its
+  own `localhost:3401` links (nor `127.0.0.1:3401`). Another port (`localhost:3000`, `:3400`) is reported: it points
+  at a different server. In a local audit this is often an environment variable (base URL) mismatch; check whether
+  the production build uses the same variable before calling it a production bug. Sitemaps are checked too.
+  Addresses inside `<pre>`/`<code>` are skipped. Add your preview platforms with `--dev-hosts` / `ZORO_DEV_HOSTS`.
+- `link-not-crawlable` sees only what is in the HTML: React/Vue click handlers are not attributes, so pure-JS
+  navigation can be missed. `<button onclick>` that opens a menu and `<a href="/x" onclick="track()">` are fine.
+- `internal-link-tracking-params`: pagination, filters and search queries are not tracking; only utm_*, click ids
+  (gclid, fbclid, msclkid…) and session ids count.
+- `click-depth` is reported only for depths the crawl saw completely (every link target of the shallower layers was
+  crawled). With `--max` far below the site size it stays silent; raise `--max` to measure depth.
+- `inbound-chrome-only` counts nav, header, footer and aside as chrome. On a partial crawl a page needs nav links from
+  ≥ 3 crawled pages to be reported (one prev/next link says nothing); on a full crawl (≥ 90 % of the sitemap) every
+  page counts. Legal/contact/help paths and hubs (≥ 30 contextual links out, CollectionPage) are skipped.
+- `bot-wall` groups identical noindex screens only when they are short (< 150 words): a JavaScript-filled noindex
+  tool page (`?a=x`) can be byte-identical across URLs without being a challenge.
+
 ## SERP-based data
 - Since Sep 2026 Google serves **poisoned SERPs** to scrapers (Nozzle research): full-looking pages with wrong results,
   5-11% of scraped SERPs. Rank trackers show fake drops that recover within ~3 days. Confirm any drop with Search
