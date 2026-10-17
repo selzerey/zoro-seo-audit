@@ -17,11 +17,15 @@ export const CLICHES = [
   "a testament to", "plays a crucial role", "unlock the", "seamless", "embark on", "ever-evolving", "comprehensive guide",
 ];
 
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Whole phrases only: "günümüzde" is the cliché opener, "günümüzdeki biçimi" (a dictionary fact) is not.
+const CLICHE_RE = CLICHES.map((c) => [c, new RegExp(`(?<!\\p{L})${esc(c)}(?!\\p{L})`, "gu")]);
+
 export function clicheHits(text) {
   const t = text.toLocaleLowerCase("tr");
   const hits = [];
-  for (const c of CLICHES) {
-    const n = t.split(c).length - 1;
+  for (const [c, re] of CLICHE_RE) {
+    const n = (t.match(re) ?? []).length;
     if (n) hits.push([c, n]);
   }
   return hits.sort((a, b) => b[1] - a[1]);

@@ -53,7 +53,8 @@ export default [
     tr: "http:// ya da www/www'siz adres tek adrese 301 ile gitmiyor",
     en: "http:// or www variant does not 301 to one host",
     check: ({ probes, origin }) =>
-      (probes?.hosts ?? []).flatMap((h) => {
+      // A local / IP host has no www variant to normalise (local or staging audit).
+      isLocal(new URL(origin).hostname) || /^\d{1,3}(\.\d{1,3}){3}$/.test(new URL(origin).hostname) ? [] : (probes?.hosts ?? []).flatMap((h) => {
         if (h.status === 0) return []; // variant does not resolve: nothing to fix
         const end = h.chain.at(-1);
         const ok = new URL(end.url).origin === origin && end.status === 200 && h.chain.slice(0, -1).every((c) => [301, 308].includes(c.status));

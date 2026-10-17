@@ -122,3 +122,21 @@ test("leak scan: private words (Turkish case) and secrets", () => {
   assert.match(scan("key=AIza" + "a".repeat(35), "f", [])[0], /Google API key/);
   assert.match(scan("postgres" + "://u:p@h/db", "f", [])[0], /database URL/);
 });
+
+test("false alarms: whole-phrase clichés, parameterised noindex pages are not a bot wall, local host normalisation", async () => {
+  assert.deepEqual(clicheHits("Aliye adının günümüzdeki biçimi; günümüzdeki yazımı"), []);
+  assert.deepEqual(clicheHits("Günümüzde bu ad sık verilir."), [["günümüzde", 1]]);
+  const { botWalled } = await import("../lib/crawl.mjs");
+  const page = (size, title = "İsim karşılaştır") => ({ fetch: { status: 200, headers: {}, size }, facts: { robots: "noindex, follow", title } });
+  const tools = new Map(Array.from({ length: 12 }, (_, i) => [`https://x.test/karsilastir/?a=n${i}`, page(80000 + i * 900)]));
+  assert.deepEqual(botWalled(tools), []); // same title, different content: noindex tool pages
+  const wall = new Map(Array.from({ length: 12 }, (_, i) => [`https://x.test/p${i}/`, page(5120, "Kısa doğrulama")]));
+  assert.equal(botWalled(wall).length, 12); // challenge title
+  const same = new Map(Array.from({ length: 12 }, (_, i) => [`https://x.test/q${i}/`, page(4096, "Bir dakika")]));
+  assert.equal(botWalled(same).length, 12); // one identical screen everywhere
+  const site = (await import("../lib/rules/site.mjs")).default;
+  const hn = site.find((r) => r.id === "host-normalisation");
+  const ctx = (origin) => ({ origin, probes: { hosts: [{ url: origin.replace("//", "//www."), status: 200, chain: [{ status: 200, url: origin.replace("//", "//www.") + "/" }] }] } });
+  assert.deepEqual(hn.check(ctx("http://localhost:3401")), []);
+  assert.equal(hn.check(ctx("https://example.com")).length, 1);
+});

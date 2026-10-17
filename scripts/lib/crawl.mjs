@@ -59,7 +59,14 @@ export function botWalled(pages) {
     const ni = /noindex/.test(`${f.robots} ${p.fetch.headers?.["x-robots-tag"] ?? ""}`);
     if (ni && f.title) byTitle.set(f.title, [...(byTitle.get(f.title) ?? []), u]);
   }
-  for (const [title, us] of byTitle) if (us.length >= 3 && (CHALLENGE.test(title) || us.length >= 10)) us.forEach((u) => out.add(u));
+  // Many URLs with one noindex title are a wall only when they also serve the same screen: a challenge page has the
+  // same size everywhere, while parameterised noindex tool pages (?a=x) share a title but differ in content.
+  const sameScreen = (us) => {
+    const sizes = us.map((u) => pages.get(u)?.fetch.size ?? 0);
+    const max = Math.max(...sizes);
+    return !max || (max - Math.min(...sizes)) / max < 0.02;
+  };
+  for (const [title, us] of byTitle) if (us.length >= 3 && (CHALLENGE.test(title) || (us.length >= 10 && sameScreen(us)))) us.forEach((u) => out.add(u));
   return [...out];
 }
 
@@ -78,7 +85,7 @@ export async function crawl(start, { max = 50, concurrency = 4, delay = 100, ua,
     const batch = frontier.splice(0, Math.min(max - pages.size, concurrency * 4));
     const results = await pool(batch, concurrency, (u) => fetchChain(u, { ua }), { delay });
     for (const r of results) {
-      const page = { fetch: { status: r.status, finalUrl: r.finalUrl, chain: r.chain, headers: r.headers, ms: r.ms }, facts: null };
+      const page = { fetch: { status: r.status, finalUrl: r.finalUrl, chain: r.chain, headers: r.headers, ms: r.ms, size: r.body?.length ?? 0 }, facts: null };
       // A redirecting URL is recorded as a redirect only; its target is crawled under its own URL (no double counting).
       if (r.chain.length > 1 && sameSite(r.finalUrl, start) && !queued.has(r.finalUrl)) {
         queued.add(r.finalUrl);
