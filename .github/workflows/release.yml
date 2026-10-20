@@ -28,7 +28,9 @@ jobs:
           grep -q "version: \"$v\"" SKILL.md
       - run: npm test
       - run: node scripts/leak-check.mjs --all
-      - run: npm publish --access public --provenance
+      - name: npm publish (skipped when this version is already on npm)
+        run: |
+          if npm view "zoro-seo-audit@${GITHUB_REF_NAME#v}" version >/dev/null 2>&1; then echo "already published"; else npm publish --access public --provenance; fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: GitHub release
