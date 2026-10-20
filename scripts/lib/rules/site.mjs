@@ -1,4 +1,5 @@
 // Site-wide checks: host normalisation, robots.txt (reachability, syntax, assets, Content-Signal), soft-404 probe, AI crawler access. Uses ctx.probes filled by audit.mjs.
+import { anyPhrase, fold } from "../lang.mjs";
 import { BOTS, contentSignals, isAllowed, robotsSyntax } from "../robots.mjs";
 import { finding, indexable, noindex, xRobotsNoindex } from "./util.mjs";
 
@@ -25,7 +26,8 @@ export function llmsFormat(body) {
 }
 
 // Title or H1 of an error page served with 200 (Turkish + English wording).
-const NOT_FOUND = /(^|D)404(D|$)|sayfa bulunamad|aradığınız sayfa|sayfa (mevcut değil|yok)|page not found|not found/;
+const NOT_FOUND_RE = anyPhrase("notFound");
+const NOT_FOUND = { test: (s) => /(^|\D)404(\D|$)/.test(s) || NOT_FOUND_RE.test(fold(s)) };
 
 /** Same-host assets robots.txt hides from Googlebot, grouped by folder ("/_next/static/chunks/" → 40 files). */
 export function blockedAssets({ pages, robots }) {
@@ -47,6 +49,19 @@ const unreachable = (s) => s === 0 || s === 429 || s >= 500;
 
 export default [
   {
+    id: "rate-limited",
+    severity: "info",
+    tr: "Sunucu bazı isteklere 429 (çok fazla istek) dedi, tekrar denemeye rağmen: bu adresler değerlendirilmedi, kırık sayılmadı. Daha yavaş tekrar çalıştır (--concurrency 1 --delay 1000) ya da kendi IP'ne izin ver",
+    en: "The server answered 429 Too Many Requests to some requests, even after retrying: those URLs were not judged and are not counted as broken. Re-run slower (--concurrency 1 --delay 1000) or allow your IP",
+    site: true,
+    check: ({ pages, linkStatus, probes, start }) => {
+      const urls = new Set([...pages].filter(([, p]) => p.fetch.status === 429).map(([u]) => u));
+      for (const [u, s] of linkStatus ?? []) if (s.status === 429) urls.add(u);
+      for (const h of [...(probes?.hosts ?? []), probes?.favicon].filter(Boolean)) if (h.status === 429) urls.add(h.url);
+      return urls.size ? [finding(start, `${urls.size} URL(s), e.g. ${[...urls].slice(0, 3).join(", ")}`)] : [];
+    },
+  },
+  {
     id: "site-closed",
     severity: "error",
     tr: "Site arama motorlarına kapalı (robots.txt her şeyi engelliyor ve sayfalar noindex). Hazırlık sitesiyse beklenen durum; canlıysa en önemli sorun budur. Bu durumda sayfa başına noindex/site haritası/robots bulguları gizlenir",
@@ -61,9 +76,10 @@ export default [
     en: "No working favicon; Google shows it next to the site in results",
     check: ({ probes, start }) => {
       const f = probes?.favicon;
-      if (!f) return [];
+      if (!f || f.status === 429) return [];
       const ok = f.status === 200 && /image|icon|octet-stream/i.test(f.type);
-      return ok ? [] : [finding(start, `${f.declared ? "declared" : "not declared, /favicon.ico"}: ${f.url} → ${f.status} ${f.type}`)];
+      const how = f.declared ? "declared" : f.inline ? "only an inline data: icon is declared (Google needs a file URL), /favicon.ico" : "not declared, /favicon.ico";
+      return ok ? [] : [finding(start, `${how}: ${f.url} → ${f.status} ${f.type}`)];
     },
   },
   {
@@ -76,7 +92,9 @@ export default [
       isLocal(new URL(origin).hostname) || /^\d{1,3}(\.\d{1,3}){3}$/.test(new URL(origin).hostname) ? [] : (probes?.hosts ?? []).flatMap((h) => {
         if (h.status === 0) return []; // variant does not resolve: nothing to fix
         const end = h.chain.at(-1);
-        const ok = new URL(end.url).origin === origin && end.status === 200 && h.chain.slice(0, -1).every((c) => [301, 308].includes(c.status));
+        // The last hop answered 429 (slow down): judge only the redirects and where they lead.
+        const ok = new URL(end.url).origin === origin && (end.status === 200 || end.status === 429) && h.chain.slice(0, -1).every((c) => [301, 308].includes(c.status));
+        if (end.status === 429 && h.chain.length === 1) return [];
         return ok ? [] : [finding(h.url, h.chain.map((c) => `${c.status} ${c.url}`).join(" → "))];
       }),
   },
@@ -147,7 +165,7 @@ export default [
       }
       for (const [u, p] of pages) {
         if (!indexable(p) || p.fetch.chain.length > 1 || p.facts.wordCount >= 150) continue;
-        const said = [p.facts.title, ...(p.facts.h1 ?? [])].find((t) => NOT_FOUND.test((t ?? "").toLocaleLowerCase("tr")));
+        const said = [p.facts.title, ...(p.facts.h1 ?? [])].find((t) => NOT_FOUND.test(t ?? ""));
         if (said) out.push(finding(u, `200 page titled "${said}" (${p.facts.wordCount} words)`));
       }
       return out;

@@ -4,8 +4,8 @@ const L = {
   en: { title: "SEO audit", pages: "pages crawled", sitemap: "sitemap URLs", none: "No issues found.", more: "more", sev: { error: "Error", warn: "Warning", info: "Info" }, verify: "Before acting: references/false-positives.md" },
 };
 
-export function toMarkdown(ctx, results, { lang = "tr", examples = 5 } = {}) {
-  const t = L[lang] ?? L.tr;
+export function toMarkdown(ctx, results, { lang = "en", examples = 5 } = {}) {
+  const t = L[lang] ?? L.en;
   const count = (s) => results.filter((r) => r.severity === s).length;
   const lines = [
     `# ${t.title}: ${ctx.start}`,
@@ -21,7 +21,7 @@ export function toMarkdown(ctx, results, { lang = "tr", examples = 5 } = {}) {
     if (!group.length) continue;
     lines.push(`## ${t.sev[sev]}`, "");
     for (const r of group) {
-      lines.push(`### ${r[lang] ?? r.tr} \`${r.id}\` (${r.findings.length})`);
+      lines.push(`### ${r[lang] ?? r.en} \`${r.id}\` (${r.findings.length})`);
       for (const f of r.findings.slice(0, examples)) lines.push(`- ${f.url}${f.detail ? ` — ${f.detail}` : ""}`);
       if (r.findings.length > examples) lines.push(`- … +${r.findings.length - examples} ${t.more}`);
       lines.push("");

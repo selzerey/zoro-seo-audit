@@ -5,7 +5,7 @@
 // INDEXNOW_KEY from env; the key file must be served at https://<host>/<key>.txt (or INDEXNOW_KEY_LOCATION).
 // Submit only new or really changed URLs; resubmitting unchanged pages wastes trust.
 import fs from "node:fs";
-import { isMain, parseArgs } from "./lib/args.mjs";
+import { isMain, parseArgs, usageOf } from "./lib/args.mjs";
 import { loadEnv } from "./lib/env.mjs";
 
 export function payload({ host, key, keyLocation, urls }) {
@@ -19,9 +19,10 @@ export async function main(argv = process.argv.slice(2)) {
   const env = loadEnv();
   const a = parseArgs(argv);
   const [cmd, ...rest] = a._;
+  if (!cmd || cmd === "help" || a.help) return console.log(usageOf(import.meta.url));
   const host = a.host ?? env.INDEXNOW_HOST;
   const key = env.INDEXNOW_KEY;
-  if (!host || !key) throw new Error("--host (or INDEXNOW_HOST) and INDEXNOW_KEY are required");
+  if (!host || !key) throw new Error("--host (or INDEXNOW_HOST) and INDEXNOW_KEY are required — run: zoro-seo-audit setup");
   const keyLocation = env.INDEXNOW_KEY_LOCATION ?? `https://${host}/${key}.txt`;
 
   if (cmd === "check") {

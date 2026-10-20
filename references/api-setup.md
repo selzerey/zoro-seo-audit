@@ -1,13 +1,16 @@
 # API setup (one-time per site/account)
 
-Put values in one of the `.env` locations (see `.env.example`); never commit them. The leak check blocks key shapes.
+Fastest: run `npx zoro-seo-audit setup` in a terminal; it asks for each value below and saves them to
+`~/.config/zoro-seo-audit/.env`. Never paste keys into an AI chat. Manual alternative: copy `.env.example` there.
+The leak check blocks key shapes from commits.
 
 ## Google Search Console
 1. Cloud Console → new project → enable **Google Search Console API**.
 2. OAuth consent screen: External, add your Google account as test user, then **Publish (In production)** — otherwise
    refresh tokens die after 7 days.
 3. Credentials → OAuth client ID → **Desktop app** → download JSON.
-4. `node scripts/google-auth.mjs --client client.json --out google-token.json` → open the printed URL, allow.
+4. `npx zoro-seo-audit setup` (answers the next step for you), or
+   `node scripts/google-auth.mjs --client client.json --out google-token.json` → open the printed URL, allow.
 5. `.env`: `GOOGLE_OAUTH_JSON=/abs/path/client.json`, `GOOGLE_TOKEN_JSON=/abs/path/google-token.json`
    (or the three `GOOGLE_CLIENT_ID/SECRET/REFRESH_TOKEN` values), `GSC_SITE=sc-domain:example.com`.
 6. Test: `node scripts/gsc.mjs sites`.

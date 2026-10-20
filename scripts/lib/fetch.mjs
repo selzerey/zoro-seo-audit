@@ -1,7 +1,29 @@
 // HTTP with the redirect chain recorded (redirects are followed by hand so every hop is visible).
-export const DEFAULT_UA = "Mozilla/5.0 (compatible; ZoroSEOAudit/0.1; +https://github.com/)";
+export const DEFAULT_UA = "Mozilla/5.0 (compatible; ZoroSEOAudit/1.0; +https://github.com/selzerey/zoro-seo-audit)";
 
-export async function fetchChain(url, { ua = DEFAULT_UA, timeout = 20000, maxHops = 10, method = "GET" } = {}) {
+/** Seconds to wait from a Retry-After header (number or HTTP date), capped; null when absent. */
+export function retryAfter(value, cap = 30) {
+  if (!value) return null;
+  const n = Number(value);
+  const s = Number.isFinite(n) ? n : (Date.parse(value) - Date.now()) / 1000;
+  return Number.isFinite(s) ? Math.min(cap, Math.max(1, Math.ceil(s))) : null;
+}
+
+/**
+ * Like fetchChainOnce, but a "slow down" answer (429, or 503 with Retry-After) is retried after a pause, so a busy
+ * server is not reported as broken. `retries` pauses: Retry-After (max 30 s) or 2 s, 6 s.
+ */
+export async function fetchChain(url, opts = {}) {
+  const { retries = 2, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = opts;
+  let r = await fetchChainOnce(url, opts);
+  for (let i = 0; i < retries && (r.status === 429 || (r.status === 503 && r.headers?.["retry-after"])); i++) {
+    await sleep((retryAfter(r.headers?.["retry-after"]) ?? [2, 6][i] ?? 6) * 1000);
+    r = await fetchChainOnce(url, opts);
+  }
+  return r;
+}
+
+async function fetchChainOnce(url, { ua = DEFAULT_UA, timeout = 20000, maxHops = 10, method = "GET" } = {}) {
   const chain = [];
   let current = url;
   for (let hop = 0; hop <= maxHops; hop++) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Usage: node scripts/audit.mjs <url> [--max 50] [--concurrency 4] [--delay 100] [--check-links 300]
-//        [--lang tr|en] [--format md|json] [--out file] [--only id,cat] [--skip id,id] [--ua "..."] [--quiet]
+//        [--lang en|tr] [--format md|json] [--out file] [--only id,cat] [--skip id,id] [--ua "..."] [--quiet]
 //        [--stale-file facts.txt] [--placeholders key,key] [--dev-hosts preview.example.net,…]
 import fs from "node:fs";
 import { isMain, parseArgs } from "./lib/args.mjs";
@@ -24,7 +24,7 @@ export async function faviconProbe(ctx, ua) {
   const home = ctx.pages.get(ctx.start)?.facts;
   const url = home?.icons?.[0] ?? `${ctx.origin}/favicon.ico`;
   const r = await fetchChain(url, { ua });
-  return { url, declared: !!home?.icons?.length, status: r.status, type: r.headers?.["content-type"] ?? "" };
+  return { url, declared: !!home?.icons?.length, inline: home?.inlineIcons ?? 0, status: r.status, type: r.headers?.["content-type"] ?? "" };
 }
 
 /** /llms.txt: status, body and the status of up to `maxLinks` links in it (one request when the file is absent). */
@@ -75,7 +75,7 @@ export async function main(argv = process.argv.slice(2)) {
   ctx.devHosts = list(a["dev-hosts"] ?? env.ZORO_DEV_HOSTS).map((h) => h.toLowerCase());
   ctx.probes = { hosts: await Promise.all(hostVariants(ctx.start).map((u) => fetchChain(u, { ua }))), favicon: await faviconProbe(ctx, ua), llms: await llmsProbe(ctx, ua) };
   const results = runRules(ctx, { only: a.only?.split(","), skip: a.skip?.split(",") ?? [] });
-  const out = a.format === "json" ? toJson(ctx, results) : toMarkdown(ctx, results, { lang: a.lang ?? "tr" });
+  const out = a.format === "json" ? toJson(ctx, results) : toMarkdown(ctx, results, { lang: a.lang ?? env.ZORO_LANG ?? "en" });
   if (a.out) {
     fs.writeFileSync(a.out, out);
     log(`report: ${a.out}`);

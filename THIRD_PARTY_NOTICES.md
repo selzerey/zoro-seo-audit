@@ -1,5 +1,11 @@
 # Third-party notices
 
+## Bundled HTML parser
+
+`scripts/lib/vendor/node-html-parser.mjs` is a bundle of node-html-parser (MIT) and its dependencies css-select,
+css-what, domhandler, domutils, dom-serializer, domelementtype, entities, nth-check (BSD-2-Clause), boolbase (ISC)
+and he (MIT). Full license texts: [`scripts/lib/vendor/LICENSES.md`](scripts/lib/vendor/LICENSES.md).
+
 ## seomator-geo-audit
 
 Parts of this project are adapted from seomator-geo-audit (SEOmator GEO Audit Skill), MIT License:

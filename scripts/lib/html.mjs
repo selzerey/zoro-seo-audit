@@ -1,5 +1,6 @@
 // Turns one HTML document into plain facts the rules read. No rule logic here.
-import { parse } from "node-html-parser";
+import { parse } from "./vendor/node-html-parser.mjs";
+import { words } from "./lang.mjs";
 
 const BLOCK_SKIP = "script,style,noscript,template,svg";
 
@@ -18,9 +19,7 @@ function text(el) {
   return (el?.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
-export function words(s) {
-  return s.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
-}
+export { words };
 
 /** Main (or body) without scripts, nav, header and footer: the page's own content. */
 function contentRoot(root) {
@@ -189,11 +188,10 @@ export function extract(html, url) {
     .map((l) => l.getAttribute("href") ?? "");
 
   // Favicon candidates (rel="icon", "shortcut icon", "apple-touch-icon"); Google shows one next to results.
-  const icons = root
-    .querySelectorAll("link")
-    .filter((l) => /(^|\s)(icon|apple-touch-icon)(\s|$)/i.test(l.getAttribute("rel") ?? ""))
-    .map((l) => absolute(l.getAttribute("href") ?? "", base))
-    .filter(Boolean);
+  const iconLinks = root.querySelectorAll("link").filter((l) => /(^|\s)(icon|apple-touch-icon)(\s|$)/i.test(l.getAttribute("rel") ?? ""));
+  const icons = iconLinks.map((l) => absolute(l.getAttribute("href") ?? "", base)).filter(Boolean);
+  // Inline data: icons show in browsers, but Google needs a crawlable file URL for the result favicon.
+  const inlineIcons = iconLinks.filter((l) => /^\s*data:/i.test(l.getAttribute("href") ?? "")).length;
 
   const hreflang = root
     .querySelectorAll("link[hreflang]")
@@ -285,6 +283,7 @@ export function extract(html, url) {
     timeCount: root.querySelectorAll("time").length,
     siteName: prop("og:site_name"),
     icons,
+    inlineIcons,
     canonicals,
     hreflang,
     h1: root.querySelectorAll("h1").map(text),

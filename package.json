@@ -1,9 +1,50 @@
 {
   "name": "zoro-seo-audit",
-  "version": "0.1.0",
-  "description": "Low-noise SEO audit skill for Claude Code: crawler, verified rules, Search Console / Bing / IndexNow loop.",
-  "private": true,
+  "version": "1.0.0",
+  "description": "Low-noise SEO audit for any website: crawler with ~100 verified rules (indexing, canonical, hreflang, schema, content, AI search), Search Console / Bing reports and IndexNow. CLI and agent skill for Claude Code and Codex.",
+  "keywords": [
+    "seo",
+    "seo-audit",
+    "technical-seo",
+    "crawler",
+    "search-console",
+    "bing-webmaster",
+    "indexnow",
+    "hreflang",
+    "structured-data",
+    "schema-org",
+    "geo",
+    "ai-search",
+    "claude-code",
+    "codex",
+    "agent-skill"
+  ],
+  "homepage": "https://github.com/selzerey/zoro-seo-audit#readme",
+  "bugs": {
+    "url": "https://github.com/selzerey/zoro-seo-audit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/selzerey/zoro-seo-audit.git"
+  },
+  "license": "MIT",
+  "author": "selzerey",
   "type": "module",
+  "bin": {
+    "zoro-seo-audit": "cli/zoro-seo-audit.mjs"
+  },
+  "files": [
+    "SKILL.md",
+    "agents",
+    "cli",
+    "references",
+    "scripts",
+    "!scripts/tests",
+    ".claude-plugin",
+    ".env.example",
+    "CHANGELOG.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -13,10 +54,15 @@
     "bing": "node scripts/bing.mjs",
     "indexnow": "node scripts/indexnow.mjs",
     "leak-check": "node scripts/leak-check.mjs",
-    "test": "node --test \"scripts/tests/**/*.test.mjs\""
+    "vendor": "node tools/vendor.mjs",
+    "test": "node --test \"scripts/tests/*.test.mjs\""
   },
-  "license": "MIT",
-  "dependencies": {
-    "node-html-parser": "^6.1.13"
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "node-html-parser": "6.1.13"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

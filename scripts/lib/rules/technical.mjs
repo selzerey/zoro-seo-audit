@@ -25,7 +25,7 @@ export default [
     severity: "error",
     tr: "Sayfa 200 dönmüyor",
     en: "Page does not return 200",
-    check: ({ pages }) => [...pages].filter(([, p]) => p.fetch.status !== 200 && !p.blocked).map(([u, p]) => finding(u, `status ${p.fetch.status}`)),
+    check: ({ pages }) => [...pages].filter(([, p]) => p.fetch.status !== 200 && p.fetch.status !== 429 && !p.blocked).map(([u, p]) => finding(u, `status ${p.fetch.status}`)),
   },
   {
     id: "redirect-chain",

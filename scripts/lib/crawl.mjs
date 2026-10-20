@@ -1,4 +1,5 @@
 // Crawl: robots.txt → sitemaps → pages (BFS from the start URL, sitemap URLs fill the rest) → status of every internal link.
+import { anyPhrase, fold } from "./lang.mjs";
 import { fetchChain, pool } from "./fetch.mjs";
 import { extract } from "./html.mjs";
 import { isAllowed, parseRobots } from "./robots.mjs";
@@ -42,7 +43,8 @@ export async function readSitemaps(starts, { ua, limit = 50000, log = () => {} }
 export const sameSite = (a, b) => new URL(a).host.replace(/^www\./, "") === new URL(b).host.replace(/^www\./, "");
 export const isPageLike = (u) => !/\.(pdf|jpe?g|png|gif|webp|avif|svg|ico|css|js|mjs|json|xml|txt|zip|gz|mp4|mp3|woff2?|ttf)(\?|$)/i.test(new URL(u).pathname);
 
-const CHALLENGE = /captcha|challenge|verify you are human|robot olmadığ|doğrulama|just a moment|access denied|attention required/i;
+const CHALLENGE_RE = anyPhrase("challenge");
+const CHALLENGE = { test: (s) => /challenge/i.test(s) || CHALLENGE_RE.test(fold(s)) };
 
 /**
  * URLs that got a bot wall instead of the page: WAF status codes with challenge markers, or the same noindex page

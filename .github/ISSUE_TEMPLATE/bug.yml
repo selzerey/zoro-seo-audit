@@ -1,0 +1,21 @@
+name: Bug
+description: Something does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Command and output
+      description: Remove API keys, tokens and private URLs.
+      render: shell
+  - type: input
+    id: env
+    attributes:
+      label: Version, OS, Node, agent
+      placeholder: "zoro-seo-audit 1.0.0, Windows 11, Node 24, Claude Code"

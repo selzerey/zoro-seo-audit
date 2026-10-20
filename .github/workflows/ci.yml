@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # No npm install: the skill must run from a plain clone.
+      - run: node cli/zoro-seo-audit.mjs --version
+      - run: npm test
+      - name: Secret scan
+        run: node scripts/leak-check.mjs --all
+
+  node20:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node cli/zoro-seo-audit.mjs help
+      - run: node --test scripts/tests/units.test.mjs scripts/tests/rules-intl.test.mjs scripts/tests/crawl.test.mjs
+
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci || npm install
+      - name: Bundled parser matches package.json
+        run: |
+          npm run vendor
+          git diff --exit-code -- scripts/lib/vendor

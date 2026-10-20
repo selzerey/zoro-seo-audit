@@ -1,4 +1,5 @@
 import content from "./content.mjs";
+import hreflang from "./hreflang.mjs";
 import links from "./links.mjs";
 import onpage from "./onpage.mjs";
 import schema from "./schema.mjs";
@@ -8,6 +9,7 @@ import technical from "./technical.mjs";
 export const RULES = [
   ...site.map((r) => ({ ...r, cat: "site" })),
   ...technical.map((r) => ({ ...r, cat: "technical" })),
+  ...hreflang.map((r) => ({ ...r, cat: "hreflang" })),
   ...links.map((r) => ({ ...r, cat: "links" })),
   ...onpage.map((r) => ({ ...r, cat: "onpage" })),
   ...schema.map((r) => ({ ...r, cat: "schema" })),

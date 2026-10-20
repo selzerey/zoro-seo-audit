@@ -1,0 +1,23 @@
+name: False alarm
+description: A finding that is not a real problem
+labels: [false-positive]
+body:
+  - type: input
+    id: rule
+    attributes:
+      label: Rule id
+      placeholder: canonical-elsewhere
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it is not a real problem
+      description: What the page does, and what Google / Bing actually do with it (links to docs help). Share a public URL only if you are fine with it being public.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "npx zoro-seo-audit --version"

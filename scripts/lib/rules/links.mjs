@@ -1,4 +1,5 @@
 // Internal linking: broken, redirecting, nofollow, empty anchors, contextual inbound links, click depth, link hygiene.
+import { UTILITY_PATH } from "../lang.mjs";
 import { isPageLike } from "../crawl.mjs";
 import { isAllowed } from "../robots.mjs";
 import { isLocal } from "./site.mjs";
@@ -40,7 +41,7 @@ export function clickDepths({ pages, start, origin, robots, linkStatus }) {
 }
 
 // Legal, contact and help pages: linked from the footer by design, no contextual links expected.
-const UTILITY = /\/(gizlilik|kvkk|cerez|çerez|aydinlatma|kullanim|kosullar|sartlar|iletisim|hakkimizda|hakkinda|kunye|kunye|sss|yardim|privacy|terms|cookie|contact|about|imprint|impressum|legal|help|faq)/i;
+const UTILITY = UTILITY_PATH;
 const HUB_TYPES = /^(CollectionPage|SearchResultsPage)$/;
 const TRACKING = /(^|[?&;])(utm_[a-z]+|gclid|fbclid|msclkid|yclid|dclid|gbraid|wbraid|mc_cid|mc_eid|_ga|_gl|igshid|jsessionid|phpsessid|sessionid|session_id)=/i;
 const LOOPBACK = (h) => /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)$/i.test(h);
@@ -88,7 +89,8 @@ export default [
     check: (ctx) =>
       [...linkTargets(ctx, () => true)].flatMap(([t, from]) => {
         const s = ctx.linkStatus.get(t);
-        return s && s.status >= 400 ? [finding(t, `status ${s.status}; linked from ${from.length} page(s), e.g. ${from[0]}`)] : [];
+        // 429 = the server asked us to slow down: not evidence of a broken link (see rate-limited).
+        return s && s.status >= 400 && s.status !== 429 ? [finding(t, `status ${s.status}; linked from ${from.length} page(s), e.g. ${from[0]}`)] : [];
       }),
   },
   {

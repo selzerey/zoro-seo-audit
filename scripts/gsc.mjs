@@ -7,7 +7,7 @@
 //   node scripts/gsc.mjs zero      --site sc-domain:example.com --sitemap https://example.com/sitemap.xml [--days 90]
 // GSC_SITE in env replaces --site. Data lags ~2-3 days; the window ends 3 days ago.
 import fs from "node:fs";
-import { isMain, parseArgs } from "./lib/args.mjs";
+import { isMain, parseArgs, usageOf } from "./lib/args.mjs";
 import { readSitemaps } from "./lib/crawl.mjs";
 import { loadEnv } from "./lib/env.mjs";
 import { googleClient } from "./lib/google.mjs";
@@ -38,6 +38,7 @@ export async function main(argv = process.argv.slice(2)) {
   const env = loadEnv();
   const a = parseArgs(argv);
   const [cmd, ...rest] = a._;
+  if (!cmd || cmd === "help" || a.help) return console.log(usageOf(import.meta.url));
   const site = a.site ?? env.GSC_SITE;
   const g = googleClient(env);
   const out = (s) => (a.out ? (fs.writeFileSync(a.out, s), console.error(`written: ${a.out}`)) : console.log(s));

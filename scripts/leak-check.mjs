@@ -16,6 +16,7 @@ export const SECRET_PATTERNS = [
   [/AIza[0-9A-Za-z_-]{35}/, "Google API key"],
   [/1\/\/0[0-9A-Za-z_-]{30,}/, "Google refresh token"],
   [/GOCSPX-[0-9A-Za-z_-]{20,}/, "Google client secret"],
+  [/npm_[A-Za-z0-9]{36}/, "npm token"],
   [/xox[abpr]-[0-9A-Za-z-]{10,}/, "Slack token"],
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, "private key"],
   [/postgres(?:ql)?:\/\/[^\s:@]+:[^\s@]+@/, "database URL with password"],

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "zoro",
+  "description": "Open-source tools by selzerey",
+  "owner": {
+    "name": "selzerey",
+    "url": "https://github.com/selzerey"
+  },
+  "plugins": [
+    {
+      "name": "zoro-seo-audit",
+      "source": "./",
+      "description": "Low-noise SEO audit: crawl a live site, verified rules, Search Console / Bing / IndexNow loop.",
+      "category": "productivity"
+    }
+  ]
+}

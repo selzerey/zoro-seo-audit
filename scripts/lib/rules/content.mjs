@@ -1,30 +1,24 @@
 // Content: leaks (shortcodes, Markdown, mojibake, stale values), thin pages, near-duplicates, AI boilerplate, dates, citability.
 // Citability limits (400-word sections, 35-word sentences) adapted from seomator-geo-audit thresholds.json,
 // Copyright (c) 2026 SEOmator — MIT License (THIRD_PARTY_NOTICES.md).
-import { words } from "../html.mjs";
+import { anyPhrase, base, fold, pack, PACKS, words } from "../lang.mjs";
 import { nodes } from "./schema.mjs";
 import { finding, indexable } from "./util.mjs";
 
-/** Phrases that mark mass-produced AI text. Count is a hint for a human edit, not a penalty score. */
-export const CLICHES = [
-  // Turkish
-  "günümüzde", "günümüz dünyasında", "hızla değişen", "sonuç olarak", "özetle", "unutmamak gerekir ki", "unutulmamalıdır ki",
-  "önemle belirtmek gerekir", "bu yazımızda", "bu makalede", "detaylı bir şekilde", "kapsamlı bir rehber", "hayati önem taşır",
-  "büyük önem taşımaktadır", "göz önünde bulundurulmalıdır", "son derece önemlidir", "dikkat edilmesi gereken", "merak edilen",
-  "sizler için", "yolculuğunuzda", "dünyasına", "kilit rol oynar", "ayrılmaz bir parçası", "vazgeçilmez",
-  // English
-  "in today's fast-paced", "in today's world", "delve into", "it is important to note", "in conclusion", "navigating the",
-  "a testament to", "plays a crucial role", "unlock the", "seamless", "embark on", "ever-evolving", "comprehensive guide",
-];
+/** Phrases that mark mass-produced AI text (per language, scripts/lib/lang.mjs). A hint for a human edit, not a score. */
+export const CLICHES = [...new Set(Object.values(PACKS).flatMap((p) => p.cliches))];
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Whole phrases only: "günümüzde" is the cliché opener, "günümüzdeki biçimi" (a dictionary fact) is not.
-const CLICHE_RE = CLICHES.map((c) => [c, new RegExp(`(?<!\\p{L})${esc(c)}(?!\\p{L})`, "gu")]);
+const cliche = (c) => [c, new RegExp(`(?<!\\p{L})${esc(fold(c))}(?!\\p{L})`, "gu")];
+const CLICHE_RE = new Map(Object.entries(PACKS).map(([code, p]) => [code, p.cliches.map(cliche)]));
+const CLICHE_ALL = CLICHES.map(cliche);
 
-export function clicheHits(text) {
-  const t = text.toLocaleLowerCase("tr");
+/** Cliché counts of a text, using the page language's list (every list when the language is unknown). */
+export function clicheHits(text, lang = null) {
+  const t = fold(text);
   const hits = [];
-  for (const [c, re] of CLICHE_RE) {
+  for (const [c, re] of CLICHE_RE.get(base(lang)) ?? CLICHE_ALL) {
     const n = (t.match(re) ?? []).length;
     if (n) hits.push([c, n]);
   }
@@ -32,7 +26,7 @@ export function clicheHits(text) {
 }
 
 function shingles(text, k = 5) {
-  const w = words(text.toLocaleLowerCase("tr"));
+  const w = words(fold(text));
   const s = new Set();
   for (let i = 0; i + k <= w.length; i++) s.add(w.slice(i, i + k).join(" "));
   return s;
@@ -46,19 +40,30 @@ export function jaccard(a, b) {
   return inter / (a.size + b.size - inter);
 }
 
-// Abbreviations whose period does not end a sentence (lower-case, without the final dot).
-const ABBR = {
-  tr: ["ör", "örn", "vb", "vs", "bkz", "bk", "krş", "dr", "prof", "doç", "yrd", "av", "op", "hz", "yy", "sn", "no", "md", "mad", "s", "sf", "c", "t.c", "m.ö", "m.s", "çev", "haz", "yay", "cad", "sok", "mah", "apt", "tel", "st"],
-  en: ["e.g", "i.e", "mr", "mrs", "ms", "dr", "prof", "st", "vs", "etc", "no", "fig", "approx", "inc", "ltd", "jr", "sr", "vol", "pp", "cf"],
-};
+const sentenceSeg = new Map();
 
 /**
- * Sentences of one text block. A period is not a sentence end after a known abbreviation, a single capital initial
- * ("A. Yılmaz"), or when the next word starts lower-case ("3. sınıf", "vb. gibi"). Decimal points never match.
+ * Sentences of one text block. A period is not a sentence end after a known abbreviation (the page language's pack),
+ * a single capital initial ("A. Yılmaz"), or when the next word starts lower-case ("3. sınıf", "vb. gibi"). Decimal
+ * points never match. Languages without a pack (Japanese, Chinese, Arabic, Hindi …) use Intl.Segmenter.
  */
-export function sentences(text, lang = "tr") {
-  const l = /^tr/i.test(lang ?? "") ? "tr" : "en";
-  const abbr = new Set(ABBR[l]);
+export function sentences(text, lang = "en") {
+  const p = pack(lang);
+  if (!p && typeof Intl.Segmenter === "function") {
+    const code = base(lang) ?? "en";
+    if (!sentenceSeg.has(code)) {
+      let seg;
+      try {
+        seg = new Intl.Segmenter(code, { granularity: "sentence" });
+      } catch {
+        seg = new Intl.Segmenter("en", { granularity: "sentence" });
+      }
+      sentenceSeg.set(code, seg);
+    }
+    return [...sentenceSeg.get(code).segment(text)].map((s) => s.segment.trim()).filter(Boolean);
+  }
+  const l = p ? base(lang) : "en";
+  const abbr = new Set((p ?? PACKS.en).abbr);
   const out = [];
   let start = 0;
   for (const m of text.matchAll(/[.!?…]+["'”’)\]]*(?=\s|$)/g)) {
@@ -103,7 +108,7 @@ export function hasDate(facts) {
 /** Visible text of a page as lines: title and description first (a leak there reaches the result snippet). */
 const lineTexts = (f) => [f.title, f.description, ...(f.lines ?? []).map((l) => l.text)].filter(Boolean);
 
-const L = "a-zçğıöşü";
+const L = "\\p{Ll}";
 /**
  * Unrendered template or shortcode syntax and leaked JavaScript values. Code samples (code/pre/kbd), scripts,
  * JSON-LD and hidden elements never reach this text. `undefined` / `null` count only as a whole value (alone in a
@@ -112,7 +117,7 @@ const L = "a-zçğıöşü";
 export const PLACEHOLDERS = [
   ["{{ }}", /\{\{[^{}\n]{1,60}\}\}/g],
   ["${ }", /\$\{[^{}\n]{1,60}\}/g],
-  ["{key}", new RegExp(`\\{[${L}][${L}0-9_]{1,40}\\}`, "g")],
+  ["{key}", new RegExp(`\\{[${L}][${L}0-9_]{1,40}\\}`, "gu")],
   ["[object Object]", /\[object Object\]/g],
   ["Invalid Date", /\bInvalid Date\b/g],
   ["NaN", /(?<![\p{L}\p{N}])NaN(?![\p{L}\p{N}])/gu],
@@ -191,7 +196,8 @@ export function parseStale(text = "") {
 }
 
 // A line (or its section heading / table caption) about the past: an earlier year or history wording.
-const HISTORY = /geçmiş|önceki|eski|tarihçe|geçen yıl|iken\b|idi\b|previous|former|last year|history|was\b/i;
+const HISTORY_RE = anyPhrase("history");
+const HISTORY = { test: (s) => HISTORY_RE.test(fold(s)) };
 const pastYear = (s, year) => [...s.matchAll(/(?<!\d)(19[5-9]\d|20\d\d)(?!\d)/g)].some((m) => Number(m[1]) < year);
 
 /** Old values still on the page outside a past-year context: [label, value, line] rows. */
@@ -294,7 +300,7 @@ export default [
     check: ({ pages }) =>
       [...pages].flatMap(([u, p]) => {
         if (!indexable(p) || p.facts.wordCount < 200) return [];
-        const hits = clicheHits(p.facts.text);
+        const hits = clicheHits(p.facts.text, p.facts.lang);
         const total = hits.reduce((s, [, n]) => s + n, 0);
         const per1000 = (total / p.facts.wordCount) * 1000;
         return total >= 4 && per1000 >= 3 ? [finding(u, `${total} (${per1000.toFixed(1)}/1000 words): ${hits.slice(0, 4).map(([c, n]) => `${c}×${n}`).join(", ")}`)] : [];
@@ -321,7 +327,7 @@ export default [
     check: ({ pages, lang }) =>
       [...pages].flatMap(([u, p]) => {
         if (!indexable(p) || p.facts.wordCount < 300) return [];
-        const issues = citability(p.facts, p.facts.lang ?? lang ?? "tr");
+        const issues = citability(p.facts, p.facts.lang ?? lang ?? "en");
         return issues.length ? [finding(u, issues.join("; "))] : [];
       }),
   },

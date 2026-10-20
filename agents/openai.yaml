@@ -1,0 +1,7 @@
+interface:
+  display_name: "Zoro SEO Audit"
+  short_description: "Audit a live website for SEO problems with few false alarms"
+  brand_color: "#2563eb"
+  default_prompt: "Run an SEO audit of https://example.com/ and tell me what to fix first."
+policy:
+  allow_implicit_invocation: true

@@ -1,11 +1,12 @@
 // Title, description, headings, images. Duplicates only count across indexable pages.
+import { fold } from "../lang.mjs";
 import { finding, indexable, pixelWidth } from "./util.mjs";
 
 function duplicates(pages, pick) {
   const by = new Map();
   for (const [u, p] of pages) {
     if (!indexable(p)) continue;
-    const v = pick(p.facts)?.trim().toLocaleLowerCase("tr");
+    const v = fold(pick(p.facts)?.trim());
     if (!v) continue;
     by.set(v, [...(by.get(v) ?? []), u]);
   }
@@ -16,7 +17,7 @@ const facts = (pages) => [...pages].filter(([, p]) => p.facts);
 
 // Short words count ("Su" in "Mira Su" is the whole difference); only true function words are dropped.
 const STOP = new Set(["ve", "ile", "de", "da", "ne", "mi", "bu", "the", "and", "of", "to", "in", "for", "on", "or"]);
-const tokens = (t) => new Set(t.toLocaleLowerCase("tr").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w)));
+const tokens = (t) => new Set(fold(t).replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w)));
 
 /**
  * Near-duplicate titles among indexable pages: words shared by many titles (template words such as "anlamı",
@@ -34,7 +35,7 @@ export function nearDuplicateTitles(pages, { threshold = 0.8, templateShare = 0.
   for (let i = 0; i < rows.length; i++)
     for (let j = i + 1; j < rows.length; j++) {
       const a0 = rows[i], b0 = rows[j];
-      if (a0.t.toLocaleLowerCase("tr") === b0.t.toLocaleLowerCase("tr")) continue;
+      if (fold(a0.t) === fold(b0.t)) continue;
       const keep = (x, y) => new Set([...x.k].filter((w) => !(template(w) && y.k.has(w))));
       const a = { ...a0, k: keep(a0, b0) }, b = { ...b0, k: keep(b0, a0) };
       if (!a.k.size || !b.k.size) continue;
@@ -91,9 +92,9 @@ export default [
     check: ({ pages }) => {
       const brand = siteBrand(pages);
       if (!brand) return [];
-      const b = brand.toLocaleLowerCase("tr");
+      const b = fold(brand);
       return facts(pages)
-        .filter(([, p]) => indexable(p) && p.facts.title && p.facts.title.length < 30 && !p.facts.title.toLocaleLowerCase("tr").includes(b))
+        .filter(([, p]) => indexable(p) && p.facts.title && p.facts.title.length < 30 && !fold(p.facts.title).includes(b))
         .map(([u, p]) => finding(u, p.facts.title));
     },
   },

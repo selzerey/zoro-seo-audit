@@ -145,6 +145,20 @@ finding, confirm it on the live page. Each item below cost real time once.
 - `bot-wall` groups identical noindex screens only when they are short (< 150 words): a JavaScript-filled noindex
   tool page (`?a=x`) can be byte-identical across URLs without being a challenge.
 
+## Crawl speed, CDNs and firewalls
+- `429 Too Many Requests` is the server asking the crawler to slow down, not a broken page. The crawler retries
+  (honouring Retry-After) and lists what stays 429 under `rate-limited`; it never reports those URLs as broken, as
+  a failed redirect or as a missing favicon. Re-run with `--concurrency 1 --delay 1000` or allow your IP to judge them.
+- `bot-wall` on your own site usually means the CDN/WAF challenges unknown user agents. Check that Googlebot and
+  Bingbot are allowed (verified-bot rules), then allow the audit's IP or user agent (`--ua`).
+
+## hreflang
+- A missing return link only counts when both pages were crawled. On a partial crawl (`--max` too low) language
+  versions that were not reached are not judged; raise `--max` or audit each language folder.
+- hreflang in XML sitemaps or HTTP headers is not read yet: a site that annotates only there gets no hreflang
+  findings (and no false alarms). Check those in Search Console.
+- `x-default` is optional. Language-only codes (`de`) next to regional ones (`de-AT`) are valid.
+
 ## SERP-based data
 - Since Sep 2026 Google serves **poisoned SERPs** to scrapers (Nozzle research): full-looking pages with wrong results,
   5-11% of scraped SERPs. Rank trackers show fake drops that recover within ~3 days. Confirm any drop with Search

@@ -2,8 +2,13 @@ node_modules/
 .env
 .env.*
 !.env.example
+*.env
 .leak-words
 *token*.json
 client_secret*.json
+google-client*.json
 reports/
 *.local.md
+audit*.md
+gsc*.md
+*.tgz

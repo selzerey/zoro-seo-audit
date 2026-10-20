@@ -8,7 +8,7 @@
 //   node scripts/bing.mjs submit  --site https://example.com/ <url> [<url> ...]   (counts against the daily quota)
 // BING_API_KEY and BING_SITE come from env. Stats cover roughly the last 6 months, summed per query/page.
 // The "AI Performance" (Copilot citations) report is in the web UI only: /webmasters/aiperformance?siteUrl=<site>
-import { isMain, parseArgs } from "./lib/args.mjs";
+import { isMain, parseArgs, usageOf } from "./lib/args.mjs";
 import { loadEnv } from "./lib/env.mjs";
 
 const API = "https://ssl.bing.com/webmaster/api.svc/json";
@@ -32,8 +32,9 @@ export async function main(argv = process.argv.slice(2)) {
   const env = loadEnv();
   const a = parseArgs(argv);
   const [cmd, ...rest] = a._;
+  if (!cmd || cmd === "help" || a.help) return console.log(usageOf(import.meta.url));
   const key = env.BING_API_KEY;
-  if (!key) throw new Error("BING_API_KEY missing (see .env.example)");
+  if (!key) throw new Error("BING_API_KEY missing — run: zoro-seo-audit setup (or see references/api-setup.md)");
   const site = a.site ?? env.BING_SITE;
   const call = async (method, params = {}, body) => {
     const qs = new URLSearchParams({ ...params, apikey: key });

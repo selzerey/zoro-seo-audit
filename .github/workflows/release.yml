@@ -1,0 +1,39 @@
+name: Release
+
+# Push a tag like v1.0.0 to publish that version to npm.
+# Uses npm trusted publishing (OIDC) when it is configured for the package; otherwise the NPM_TOKEN secret.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
+      - name: Tag matches package.json, plugin.json and SKILL.md
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          test "$(node -p "require('./package.json').version")" = "$v"
+          test "$(node -p "require('./.claude-plugin/plugin.json').version")" = "$v"
+          grep -q "version: \"$v\"" SKILL.md
+      - run: npm test
+      - run: node scripts/leak-check.mjs --all
+      - run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$(awk -v v="## ${GITHUB_REF_NAME#v}" 'index($0,v)==1{f=1;next} /^## /{f=0} f' CHANGELOG.md)"
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "${notes:-See CHANGELOG.md}"
