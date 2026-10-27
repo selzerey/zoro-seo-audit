@@ -1,10 +1,10 @@
 ---
 name: zoro-seo-audit
-description: Audits a live website for SEO problems with few false alarms - crawl and indexing (status, redirects, canonical, robots.txt, sitemaps, soft 404), hreflang, structured data, on-page tags, internal links, content leaks and AI-search readiness - and turns Google Search Console and Bing Webmaster data into cannibalisation, striking-distance and pruning lists; submits new URLs with IndexNow. Use when the user asks to audit or check a site's SEO, after a big deploy or before a launch, asks why a page is not indexed or ranking, which pages compete, what to prune or improve next, or wants to submit URLs or check AI crawler access. Not for keyword research or writing content from scratch.
+description: Audits a live website for SEO problems with few false alarms - crawl and indexing (status, redirects, canonical, robots.txt, sitemaps, soft 404), hreflang, structured data, on-page tags, internal links, content leaks and AI-search readiness - and turns Google Search Console and Bing Webmaster data into cannibalisation, striking-distance and pruning lists (scraper-like queries filtered out); Core Web Vitals field data from CrUX; submits new URLs with IndexNow. Use when the user asks to audit or check a site's SEO, after a big deploy or before a launch, asks why a page is not indexed or ranking, which pages compete, what to prune or improve next, or wants to submit URLs or check AI crawler access. Not for keyword research or writing content from scratch.
 license: MIT
 compatibility: Requires Node.js 20+ and network access to the audited site. Search Console, Bing and IndexNow features need the user's own API keys.
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: selzerey
   homepage: https://github.com/selzerey/zoro-seo-audit
 ---
@@ -39,16 +39,20 @@ the scripts use only Node.js built-ins and a bundled HTML parser.
    with `--only <rule-id>` to confirm.
 4. **Search data loop** (needs keys, see Setup) — details in `references/gsc-loop.md`
    - `node scripts/gsc.mjs report --site sc-domain:example.com --brand brandname --out gsc.md`
-     → cannibalisation, striking distance (positions 4-20), low CTR on page 1.
+     → cannibalisation, striking distance (positions 4-20), low CTR on page 1. Scraper-like queries (huge
+     impressions, ~0 clicks, page 1) are listed apart and excluded; `--keep-suspects` keeps them.
    - `node scripts/gsc.mjs inspect --site sc-domain:example.com <url>` → index verdict and Google-chosen canonical.
    - `node scripts/gsc.mjs zero --site sc-domain:example.com --sitemap <sitemap url>` → pruning candidates.
+   - `node scripts/gsc.mjs sitemaps --site sc-domain:example.com` → submitted sitemaps and index children that
+     should be submitted on their own (per-section Page indexing filter).
+   - `node scripts/cwv.mjs <url> [--origin]` → Core Web Vitals field data (CrUX): LCP, INP, CLS p75 and ratings.
    - `node scripts/bing.mjs queries|pages --site https://example.com/` → Bing / Copilot demand.
 5. **Notify** new or changed URLs: `node scripts/indexnow.mjs submit --host example.com <urls>` (Bing, Yandex,
    Seznam, Naver). Google: keep sitemap `lastmod` correct; request indexing by hand only for a few key URLs.
 6. **Report** to the user in the user's language: what was found, what was verified as real, what was fixed, and
    what is left with a reason. Never paste raw tool output as findings.
 
-## Setup (only for Search Console / Bing / IndexNow)
+## Setup (only for Search Console / Bing / IndexNow / CrUX)
 - Ask the user to run `npx zoro-seo-audit setup` in a terminal (interactive; saves to
   `~/.config/zoro-seo-audit/.env`), or follow `references/api-setup.md`. Never ask the user to paste keys into chat.
 - `node cli/zoro-seo-audit.mjs doctor` (or `npx zoro-seo-audit doctor`) shows which settings are found, without
@@ -57,11 +61,11 @@ the scripts use only Node.js built-ins and a bundled HTML parser.
 ## Rules (scripts/lib/rules/)
 | Category | Rules |
 |---|---|
-| site | site-closed, favicon-missing, host-normalisation, robots-missing, robots-unreachable, robots-syntax, robots-blocks-assets, robots-no-sitemap, content-signal-conflict, soft-404, search-bot-blocked, ai-bot-access, bot-wall, llms-txt, https-hsts, feed-missing |
+| site | site-closed, favicon-missing, favicon-blocked, host-normalisation, robots-missing, robots-unreachable, robots-syntax, robots-blocks-assets, robots-no-sitemap, content-signal-conflict, soft-404, search-bot-blocked, ai-bot-access, bot-wall, llms-txt, https-hsts, feed-missing |
 | technical | status-error, redirect-chain, canonical-missing / -multiple / -relative / -target-bad / -elsewhere, canonical-header-conflict, canonical-outside-head, canonical-noindex-conflict, canonical-chain, head-invalid-element, head-duplicate-meta, charset-missing, viewport-missing, snippet-restricted, robots-directive-conflict, sitemap-not-indexable, sitemap-robots-blocked, sitemap-missing, sitemap-lastmod-future, sitemap-lastmod-uniform, sitemap-query-url, noindex-linked, lang-missing, mixed-content, slow-response, content-extractability |
 | hreflang | hreflang-invalid, hreflang-conflict, hreflang-self-missing, hreflang-no-return, hreflang-target-bad |
 | links | internal-link-broken, internal-link-redirect, internal-nofollow, link-empty-text, link-not-crawlable, link-dev-host, internal-link-tracking-params, inbound-chrome-only, click-depth, sitemap-orphan |
-| onpage | title-missing / -duplicate / -near-duplicate / -no-brand / -long, description-missing / -duplicate / -long, h1-missing / -multiple, img-alt-missing, img-no-dimensions, lcp-image-lazy, og-image-missing, twitter-card-missing |
+| onpage | title-missing / -duplicate / -near-duplicate / -no-brand / -long, description-missing / -duplicate / -long, h1-missing / -multiple, img-alt-missing, img-no-dimensions, lcp-image-lazy, og-image-missing, twitter-card-missing, hidden-keyword-repetition |
 | schema | jsonld-invalid, article-fields, author-fake-risk, date-future, date-order, sitemap-lastmod-drift, datemodified-uniform, org-id-inconsistent, breadcrumb-positions, page-entity-missing, schema-dangling-id, faq-howto-note, schema-required-props, schema-recommended-props |
 | content | placeholder-leak, markdown-leak, mojibake, stale-fact (needs a list), thin-content, near-duplicate, ai-cliches, freshness-missing, citability |
 

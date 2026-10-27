@@ -17,6 +17,13 @@
   answers).
 - Vary sentence length; prefer active voice; cut adjectives that carry no fact.
 
+## User-published and generated pages
+- Google's spam policies (updated Oct 2026) now name sites that let users publish "shareable pages, generated
+  outputs, or interactive tools" at scale as a spam vector (think AI-chat share pages, user-made calculators, public
+  profile pages created by bots). If the site has such an area: `noindex` it by default, index only reviewed items,
+  keep it out of the sitemap, and rate-limit creation. A "thin UGC area + indexable" combination is the pattern the
+  September 2026 spam update hit.
+
 ## YMYL (money, health, law, official procedures)
 - Every rate, limit, fee, date: primary source (official gazette, tax/social security authority, central bank,
   ministry). Record the source and its validity date next to the number.

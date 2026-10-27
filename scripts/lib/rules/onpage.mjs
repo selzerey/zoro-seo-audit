@@ -19,6 +19,39 @@ const facts = (pages) => [...pages].filter(([, p]) => p.facts);
 const STOP = new Set(["ve", "ile", "de", "da", "ne", "mi", "bu", "the", "and", "of", "to", "in", "for", "on", "or"]);
 const tokens = (t) => new Set(fold(t).replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w)));
 
+const TERM_MIN = 4;
+/** Word counts of a text (folded, letters/digits only, words of TERM_MIN+ characters). */
+function termCounts(text) {
+  const m = new Map();
+  for (const w of fold(text ?? "").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)) if (w.length >= TERM_MIN) m.set(w, (m.get(w) ?? 0) + 1);
+  return m;
+}
+
+/**
+ * The page's main term (from the title) repeated far more in machine-read fields (JSON-LD, meta, Open Graph, alt
+ * text) than in the text people read. Visible copy looks natural while the source is stuffed; passage extraction
+ * for AI answers suffers as much as classic ranking. Returns null, or { term, visible, hidden }.
+ */
+export function hiddenRepetition(facts, { minHidden = 15, ratio = 3 } = {}) {
+  const title = termCounts(facts.title);
+  if (!title.size) return null;
+  const visible = termCounts(facts.text);
+  const machine = [
+    ...facts.jsonLd.filter((j) => j.ok).map((j) => JSON.stringify(j.data)),
+    facts.description,
+    facts.ogTitle,
+    facts.images.map((i) => i.alt).join(" "),
+  ].join(" ");
+  const hidden = termCounts(machine);
+  let worst = null;
+  for (const term of title.keys()) {
+    const h = hidden.get(term) ?? 0;
+    const v = visible.get(term) ?? 0;
+    if (h >= minHidden && h >= ratio * Math.max(v, 1) && (!worst || h > worst.hidden)) worst = { term, visible: v, hidden: h };
+  }
+  return worst;
+}
+
 /**
  * Near-duplicate titles among indexable pages: words shared by many titles (template words such as "anlamı",
  * "nedir") are ignored when both titles have them, then pairs whose remaining words overlap ≥ 80 % (Jaccard) are
@@ -187,5 +220,16 @@ export default [
     en: "og:image present but no twitter:card (X shows no large-image card; summary_large_image recommended)",
     check: ({ pages }) => facts(pages).filter(([, p]) => indexable(p) && p.facts.ogImage && !p.facts.twitterCard).map(([u]) => finding(u)),
   },
+  {
+    id: "hidden-keyword-repetition",
+    severity: "info",
+    tr: "Başlıktaki ana terim, kullanıcının gördüğü metinden çok makinenin okuduğu alanlarda (JSON-LD, meta, OG, alt) tekrarlanıyor: aşırı optimizasyon işareti; pasaj çıkarımını da zorlaştırır. Yapısal verideki tekrarları azalt",
+    en: "The title's main term is repeated far more in machine-read fields (JSON-LD, meta, OG, alt) than in the text people see: an over-optimisation sign that also hurts passage extraction. Trim the repeats in structured data",
+    check: ({ pages }) =>
+      facts(pages).flatMap(([u, p]) => {
+        if (!indexable(p)) return [];
+        const r = hiddenRepetition(p.facts);
+        return r ? [finding(u, `"${r.term}": ${r.visible}× visible, ${r.hidden}× in JSON-LD/meta/alt`)] : [];
+      }),
+  },
 ];
-

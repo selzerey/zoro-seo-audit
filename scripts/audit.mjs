@@ -24,7 +24,7 @@ export async function faviconProbe(ctx, ua) {
   const home = ctx.pages.get(ctx.start)?.facts;
   const url = home?.icons?.[0] ?? `${ctx.origin}/favicon.ico`;
   const r = await fetchChain(url, { ua });
-  return { url, declared: !!home?.icons?.length, inline: home?.inlineIcons ?? 0, status: r.status, type: r.headers?.["content-type"] ?? "" };
+  return { url, declared: !!home?.icons?.length, inline: home?.inlineIcons ?? 0, status: r.status, type: r.headers?.["content-type"] ?? "", chain: r.chain ?? [{ url, status: r.status }] };
 }
 
 /** /llms.txt: status, body and the status of up to `maxLinks` links in it (one request when the file is absent). */

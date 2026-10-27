@@ -28,6 +28,13 @@ The leak check blocks key shapes from commits.
 3. `.env`: `INDEXNOW_KEY=…`, `INDEXNOW_HOST=example.com`.
 4. `node scripts/indexnow.mjs check` → then `submit <url>…` only for new/changed URLs.
 
+## Core Web Vitals (CrUX)
+1. Cloud Console (same project is fine) → enable **Chrome UX Report API** → Credentials → **API key** (restrict it to
+   that API).
+2. `.env`: `CRUX_API_KEY=…` (or answer the question in `npx zoro-seo-audit setup`).
+3. Test: `node scripts/cwv.mjs https://example.com/ --origin`. Page-level data needs enough Chrome visitors; small
+   sites get origin-level data only. Field data lags about 28 days.
+
 ## Crawl politeness
 - Default: 4 parallel requests, 100 ms pause each. For small/shared hosting use `--concurrency 2 --delay 300`.
 - Own WAF blocks the audit? Add an allow rule for your IP or UA (`ZORO_UA` env sets the UA).

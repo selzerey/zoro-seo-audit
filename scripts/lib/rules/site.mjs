@@ -83,6 +83,20 @@ export default [
     },
   },
   {
+    id: "favicon-blocked",
+    severity: "warn",
+    tr: "Site ikonu (favicon) ya da ona giden yönlendirme robots.txt ile Googlebot/Googlebot-Image'a kapalı: Google ikonu alamaz, arama sonucunda varsayılan simge çıkar. Google'ın ikon dokümanı ana sayfadan ikon konumuna yönlendirmelerin de takip edilebilir olmasını ister",
+    en: "The favicon, or a redirect on the way to it, is disallowed for Googlebot/Googlebot-Image in robots.txt: Google cannot fetch the icon and shows a default one. Google's favicon guidance requires that redirects from the home page to the icon location can be followed",
+    site: true,
+    check: ({ probes, robots, origin, start }) => {
+      const f = probes?.favicon;
+      if (!f || !robots || f.status !== 200) return [];
+      const hops = (f.chain ?? [{ url: f.url }]).map((h) => h.url).filter((u) => u.startsWith(origin));
+      const blocked = hops.filter((u) => !isAllowed(robots, "Googlebot-Image", u) || !isAllowed(robots, "Googlebot", u));
+      return blocked.length ? [finding(start, `${blocked.join(" → ")} (robots.txt Disallow applies to Googlebot-Image/Googlebot${hops.length > 1 ? "; icon is reached through a redirect" : ""})`)] : [];
+    },
+  },
+  {
     id: "host-normalisation",
     severity: "error",
     tr: "http:// ya da www/www'siz adres tek adrese 301 ile gitmiyor",

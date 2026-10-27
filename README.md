@@ -234,6 +234,7 @@ zoro-seo-audit doctor        # what is installed, which settings are found (valu
 | `gsc zero` | Sitemap pages with zero impressions in 90 days — pruning or merge candidates |
 | `bing queries` / `pages` | Bing and Copilot demand, summed over ~6 months |
 | `indexnow submit` | Notifies Bing, Yandex, Seznam and Naver about new or changed URLs |
+| `cwv <url>` | Core Web Vitals field data from CrUX (LCP, INP, CLS p75 and ratings) |
 
 Settings are read from (first wins): environment variables, `$ZORO_SEO_AUDIT_ENV`, `./.zoro-seo-audit.env`,
 `~/.config/zoro-seo-audit/.env`, then a `.env` next to `SKILL.md`. See [`.env.example`](.env.example) for every key.
@@ -242,16 +243,16 @@ Settings are read from (first wins): environment variables, `$ZORO_SEO_AUDIT_ENV
 
 | Category | Rules |
 |---|---|
-| site | site-closed, favicon-missing, host-normalisation, robots-missing, robots-unreachable, robots-syntax, robots-blocks-assets, robots-no-sitemap, content-signal-conflict, soft-404, search-bot-blocked, ai-bot-access, bot-wall, rate-limited, llms-txt, https-hsts, feed-missing |
+| site | site-closed, favicon-missing, favicon-blocked, host-normalisation, robots-missing, robots-unreachable, robots-syntax, robots-blocks-assets, robots-no-sitemap, content-signal-conflict, soft-404, search-bot-blocked, ai-bot-access, bot-wall, rate-limited, llms-txt, https-hsts, feed-missing |
 | technical | status-error, redirect-chain, canonical-missing / -multiple / -relative / -target-bad / -elsewhere, canonical-header-conflict, canonical-outside-head, canonical-noindex-conflict, canonical-chain, head-invalid-element, head-duplicate-meta, charset-missing, viewport-missing, snippet-restricted, robots-directive-conflict, sitemap-not-indexable, sitemap-robots-blocked, sitemap-missing, sitemap-lastmod-future, sitemap-lastmod-uniform, sitemap-query-url, noindex-linked, lang-missing, mixed-content, slow-response, content-extractability |
 | hreflang | hreflang-invalid, hreflang-conflict, hreflang-self-missing, hreflang-no-return, hreflang-target-bad |
 | links | internal-link-broken, internal-link-redirect, internal-nofollow, link-empty-text, link-not-crawlable, link-dev-host, internal-link-tracking-params, inbound-chrome-only, click-depth, sitemap-orphan |
-| onpage | title-missing / -duplicate / -near-duplicate / -no-brand / -long, description-missing / -duplicate / -long, h1-missing / -multiple, img-alt-missing, img-no-dimensions, lcp-image-lazy, og-image-missing, twitter-card-missing |
+| onpage | title-missing / -duplicate / -near-duplicate / -no-brand / -long, description-missing / -duplicate / -long, h1-missing / -multiple, img-alt-missing, img-no-dimensions, lcp-image-lazy, og-image-missing, twitter-card-missing, hidden-keyword-repetition |
 | schema | jsonld-invalid, article-fields, author-fake-risk, date-future, date-order, sitemap-lastmod-drift, datemodified-uniform, org-id-inconsistent, breadcrumb-positions, page-entity-missing, schema-dangling-id, faq-howto-note, schema-required-props, schema-recommended-props |
 | content | placeholder-leak, markdown-leak, mojibake, stale-fact, thin-content, near-duplicate, ai-cliches, freshness-missing, citability |
 
-What it deliberately does **not** do: Core Web Vitals lab scores (use PageSpeed Insights / CrUX), backlink data,
-keyword volumes, or rank tracking from scraped results.
+What it deliberately does **not** do: Core Web Vitals lab scores (`cwv` reads CrUX field data instead), backlink
+data, keyword volumes, or rank tracking from scraped results.
 
 ## Languages
 

@@ -11,6 +11,11 @@ finding, confirm it on the live page. Each item below cost real time once.
 - `noindex` pages (search results, admin, thank-you, print) need no canonical, no description, no H1 work.
 - Bot challenge (Cloudflare/WAF) on a datacenter IP: 403/503 + challenge HTML. Results for those pages are void. Rerun
   from a residential IP or allowlist the audit UA; never "fix" pages because of challenge responses.
+- `search-bot-blocked` on a Cloudflare site: since Oct 2026 the dashboard's "Block" choice for AI training can block
+  Googlebot/Bingbot/Applebot entirely (they are mixed-use crawlers). The intended setting is "Disallow AI Training".
+  The robots.txt in the repository looks clean; the live one, rewritten at the edge, is what counts.
+- `favicon-blocked` lists only same-origin hops of the icon's redirect chain. An icon served from another host is not
+  judged (its robots.txt is not read); check that host by hand if the icon is missing in results.
 
 - Whole site noindex on staging/preview (robots `Disallow: /` + noindex): that is the pre-launch switch, not a bug;
   `site-closed` reports it once. Audit with indexing opened on staging to see real findings.
@@ -18,6 +23,16 @@ finding, confirm it on the live page. Each item below cost real time once.
   with its own title; `sitemap-query-url` is info only.
 - Near-duplicate titles on templated pages ("X isminin anlamı nedir") are not cannibalisation; the rule drops words
   shared by >15 % of titles before comparing.
+- `hidden-keyword-repetition` (info) counts a title term in JSON-LD, meta, Open Graph and alt text against the visible
+  text. A product page whose JSON-LD legitimately lists many variants or offers with the product name can trip it;
+  judge by reading the structured data, and only trim repeats that carry no information.
+
+## Search Console data
+- "Low CTR" pages fed by one or two queries with huge impressions and ~0 clicks: scraper / rank-tracker traffic, not
+  a title problem. `gsc report` lists them under "Suspect queries" and excludes them; verify in the UI (the
+  impressions usually stop abruptly on one day).
+- A flat line at the end of the Performance window is reporting delay (sometimes 2-3 days, occasionally longer),
+  not a traffic drop. Compare like-for-like windows that end at least 3 days ago.
 
 ## Dates
 - `Dataset`, `Event`, `Offer` `dateModified`/dates describe the data (e.g. tax rates valid from Jan 1), not the page.

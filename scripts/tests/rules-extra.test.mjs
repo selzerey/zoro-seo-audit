@@ -83,3 +83,31 @@ test("sitemap-query-url", () => {
   const r = ids(ctxOf([page(`${O}/`)], { sitemap: [`${O}/isimler/`, `${O}/isimler/?g=f`] }), ["sitemap-query-url"]);
   assert.deepEqual(r.get("sitemap-query-url").findings.map((x) => x.url), [`${O}/isimler/?g=f`]);
 });
+
+test("favicon-blocked: icon (or a redirect hop to it) disallowed for Googlebot-Image; an allowed icon and a foreign CDN hop are fine", () => {
+  const p = [page(`${O}/`)];
+  const robots = "User-agent: *\nDisallow: /static/\n\nUser-agent: Googlebot-Image\nDisallow: /assets/icons/";
+  const direct = { url: `${O}/assets/icons/fav.png`, declared: true, status: 200, type: "image/png", chain: [{ url: `${O}/assets/icons/fav.png`, status: 200 }] };
+  assert.ok(ids(ctxOf(p, { robots, favicon: direct }), ["favicon-blocked"]).has("favicon-blocked"), "named Googlebot-Image group blocks the icon");
+  const viaRedirect = { url: `${O}/favicon.ico`, declared: false, status: 200, type: "image/x-icon", chain: [{ url: `${O}/favicon.ico`, status: 301 }, { url: `${O}/static/fav.ico`, status: 200 }] };
+  const r = ids(ctxOf(p, { robots, favicon: viaRedirect }), ["favicon-blocked"]).get("favicon-blocked");
+  assert.ok(r && /redirect/.test(r.findings[0].detail), "the hop after the redirect is under a * Disallow");
+  const fine = { url: `${O}/favicon.ico`, declared: false, status: 200, type: "image/x-icon", chain: [{ url: `${O}/favicon.ico`, status: 200 }] };
+  assert.ok(!ids(ctxOf(p, { robots, favicon: fine }), ["favicon-blocked"]).has("favicon-blocked"));
+  // Trap: a redirect to another host is outside this robots.txt; a 404 icon is favicon-missing's job, not this rule's.
+  const cdn = { url: `${O}/favicon.ico`, declared: false, status: 200, type: "image/x-icon", chain: [{ url: `${O}/favicon.ico`, status: 302 }, { url: "https://cdn.test/static/fav.ico", status: 200 }] };
+  assert.ok(!ids(ctxOf(p, { robots, favicon: cdn }), ["favicon-blocked"]).has("favicon-blocked"));
+  assert.ok(!ids(ctxOf(p, { robots, favicon: { ...direct, status: 404 } }), ["favicon-blocked"]).has("favicon-blocked"));
+});
+
+test("hidden-keyword-repetition: term stuffed into JSON-LD/alt but rare in the text; a page that uses it in the copy is fine", () => {
+  const stuffedLd = ld({ "@type": "Product", name: "Kombi servisi", description: Array(16).fill("kombi servisi").join(", "), keywords: Array(6).fill("kombi").join(" ") });
+  const stuffed = page(`${O}/kombi/`, { title: "Kombi servisi İstanbul", text: "Kombi arızanızı aynı gün tamir ederiz. Ücretsiz keşif, garanti.", wordCount: 300, jsonLd: [stuffedLd], images: Array(5).fill({ src: "/a.jpg", hasAlt: true, alt: "kombi servisi kombi", loading: "", beforeFirstH2: false }) });
+  const r = ids(ctxOf([stuffed]), ["hidden-keyword-repetition"]).get("hidden-keyword-repetition");
+  assert.ok(r && /"kombi": 1× visible, \d+× in JSON-LD/.test(r.findings[0].detail), r?.findings[0].detail);
+  // Trap: the same term used naturally in long copy with modest structured data.
+  const natural = page(`${O}/kombi2/`, { title: "Kombi servisi İstanbul", text: Array(30).fill("kombi servisi için randevu alın").join(". "), wordCount: 300, jsonLd: [ld({ "@type": "Service", name: "Kombi servisi" })], images: [{ src: "/a.jpg", hasAlt: true, alt: "kombi", loading: "", beforeFirstH2: false }] });
+  assert.ok(!ids(ctxOf([natural]), ["hidden-keyword-repetition"]).has("hidden-keyword-repetition"));
+  // Trap: no title term (title missing) → nothing to compare.
+  assert.ok(!ids(ctxOf([page(`${O}/x/`, { title: "", jsonLd: [stuffedLd] })]), ["hidden-keyword-repetition"]).has("hidden-keyword-repetition"));
+});

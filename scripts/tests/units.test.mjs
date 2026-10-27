@@ -9,7 +9,7 @@ import { scan } from "../leak-check.mjs";
 import { parseArgs } from "../lib/args.mjs";
 import { parseSitemap } from "../lib/crawl.mjs";
 import { loadEnv, parseEnv } from "../lib/env.mjs";
-import { cannibalisation, lowCtr, strikingDistance, urlVariants, zeroImpression } from "../lib/gsc-analysis.mjs";
+import { cannibalisation, lowCtr, strikingDistance, subtractQueries, suspectQueries, unsubmittedChildren, urlVariants, withoutQueries, zeroImpression } from "../lib/gsc-analysis.mjs";
 import { extract } from "../lib/html.mjs";
 import { isAllowed, parseRobots } from "../lib/robots.mjs";
 import { clicheHits, jaccard } from "../lib/rules/content.mjs";
@@ -103,6 +103,31 @@ test("gsc analysis", () => {
   assert.deepEqual(zeroImpression(["/a", "/b"], [{ keys: ["/a"] }]), ["/b"]);
 });
 
+test("gsc: scraper-like queries are isolated and subtracted from page CTR; a real popular query is kept", () => {
+  const qp = [
+    { keys: ["bot query", "/p"], clicks: 2, impressions: 50000, ctr: 0.00004, position: 3 },
+    { keys: ["real query", "/p"], clicks: 400, impressions: 4000, ctr: 0.1, position: 2 },
+    { keys: ["aio only", "/q"], clicks: 3, impressions: 1500, ctr: 0.002, position: 18 }, // page 2: not a scraper pattern
+  ];
+  const s = suspectQueries(qp);
+  assert.deepEqual(s.map((x) => x.query), ["bot query"]);
+  assert.deepEqual(withoutQueries(qp, s).map((r) => r.keys[0]), ["real query", "aio only"]);
+  const pages = subtractQueries([{ keys: ["/p"], clicks: 402, impressions: 54000, ctr: 0.0074, position: 2.9 }, { keys: ["/q"], clicks: 3, impressions: 1500, ctr: 0.002, position: 18 }], qp, s);
+  assert.equal(pages[0].impressions, 4000);
+  assert.equal(pages[0].clicks, 400);
+  assert.ok(Math.abs(pages[0].ctr - 0.1) < 1e-9);
+  // Without the filter /p looks like a low-CTR page; with it, it does not.
+  assert.equal(lowCtr([{ keys: ["/p"], clicks: 402, impressions: 54000, ctr: 0.0074, position: 2.9 }]).length, 1);
+  assert.equal(lowCtr(pages).length, 0);
+});
+
+test("gsc: child sitemaps of a submitted index that are not submitted themselves", () => {
+  const submitted = [{ path: "https://x.test/sitemap.xml", isSitemapsIndex: true }, { path: "https://x.test/sitemap-posts.xml" }];
+  const kids = { "https://x.test/sitemap.xml": ["https://x.test/sitemap-posts.xml", "https://x.test/sitemap-pages.xml/", "http://x.test/sitemap-tags.xml"] };
+  assert.deepEqual(unsubmittedChildren(submitted, kids).map((c) => c.child), ["https://x.test/sitemap-pages.xml/", "http://x.test/sitemap-tags.xml"]);
+  assert.deepEqual(unsubmittedChildren([{ path: "https://x.test/sitemap-pages.xml" }], { i: ["https://x.test/sitemap-pages.xml/"] }), []);
+});
+
 test("bing sumStats merges days and weights position by impressions", () => {
   const s = sumStats([
     { Query: "q", Impressions: 10, Clicks: 1, AvgImpressionPosition: 2 },
@@ -139,4 +164,20 @@ test("false alarms: whole-phrase clichés, parameterised noindex pages are not a
   const ctx = (origin) => ({ origin, probes: { hosts: [{ url: origin.replace("//", "//www."), status: 200, chain: [{ status: 200, url: origin.replace("//", "//www.") + "/" }] }] } });
   assert.deepEqual(hn.check(ctx("http://localhost:3401")), []);
   assert.equal(hn.check(ctx("https://example.com")).length, 1);
+});
+
+test("cwv: CrUX record → p75, rating and distribution; 404 means no data, not an error", async () => {
+  const { queryRecord, summarise, rating } = await import("../cwv.mjs");
+  const record = { metrics: { largest_contentful_paint: { percentiles: { p75: 2900 }, histogram: [{ density: 0.6 }, { density: 0.25 }, { density: 0.15 }] }, cumulative_layout_shift: { percentiles: { p75: "0.05" }, histogram: [{ density: 0.9 }, { density: 0.1 }, { density: 0 }] } } };
+  const s = summarise(record);
+  assert.deepEqual(s.map((m) => [m.label, m.rating, m.good]), [["LCP", "needs improvement", 60], ["CLS", "good", 90]]);
+  assert.equal(rating("interaction_to_next_paint", 650), "poor");
+  const fetchImpl = async (url, init) => {
+    assert.ok(url.includes("key=k"));
+    assert.deepEqual(JSON.parse(init.body), { origin: "https://x.test", formFactor: "PHONE" });
+    return { status: 404, ok: false, json: async () => ({ error: { message: "not found" } }) };
+  };
+  const r = await queryRecord("https://x.test", { key: "k", origin: true, fetchImpl });
+  assert.equal(r.record, null);
+  assert.match(r.note, /no CrUX data/);
 });

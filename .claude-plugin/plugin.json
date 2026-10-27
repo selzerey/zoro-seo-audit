@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "zoro-seo-audit",
   "displayName": "Zoro SEO Audit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Low-noise SEO audit for any website: crawl, ~100 verified rules (indexing, canonical, hreflang, schema, content, AI search), Search Console / Bing reports and IndexNow.",
   "author": {
     "name": "selzerey",

@@ -16,11 +16,12 @@ Usage
   zoro-seo-audit <url> [options]          Crawl a site and print a report (same as "audit <url>")
   zoro-seo-audit install [targets]        Install the skill for Claude Code and/or Codex
   zoro-seo-audit uninstall [targets]      Remove the installed skill
-  zoro-seo-audit setup                    Save Search Console / Bing / IndexNow keys (optional)
+  zoro-seo-audit setup                    Save Search Console / Bing / IndexNow / CrUX keys (optional)
   zoro-seo-audit doctor                   Show what is installed and which settings are found
   zoro-seo-audit gsc <command>            Search Console reports      (gsc help)
   zoro-seo-audit bing <command>           Bing Webmaster reports      (bing help)
   zoro-seo-audit indexnow <command>       Submit URLs with IndexNow   (indexnow help)
+  zoro-seo-audit cwv <url> [<url>...]     Core Web Vitals field data (CrUX)   (cwv help)
   zoro-seo-audit google-auth --client <client.json> --out <token.json>
 
 Audit options
@@ -141,6 +142,7 @@ const KEYS = {
   "Google Search Console": ["GSC_SITE", "GSC_BRAND", "GOOGLE_OAUTH_JSON", "GOOGLE_TOKEN_JSON", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"],
   "Bing Webmaster": ["BING_API_KEY", "BING_SITE"],
   IndexNow: ["INDEXNOW_KEY", "INDEXNOW_HOST", "INDEXNOW_KEY_LOCATION"],
+  "Core Web Vitals (CrUX)": ["CRUX_API_KEY"],
 };
 
 function doctor() {
@@ -214,6 +216,7 @@ async function setup() {
       v.INDEXNOW_KEY = await ask("Key (leave empty to generate one)", cur.INDEXNOW_KEY) || crypto.randomUUID().replace(/-/g, "");
       console.log(`  Serve the key at https://${v.INDEXNOW_HOST}/${v.INDEXNOW_KEY}.txt (file content: the key), then run "zoro-seo-audit indexnow check".`);
     }
+    if (await yes("Set up Core Web Vitals (CrUX API key)?")) v.CRUX_API_KEY = await ask("CrUX API key (Google Cloud → Chrome UX Report API → API key)", cur.CRUX_API_KEY);
   } finally {
     rl.close();
   }
@@ -223,7 +226,7 @@ async function setup() {
   console.log(`\nSaved ${Object.keys(clean).join(", ")} to ${file}`);
 }
 
-const TOOLS = { audit: "../scripts/audit.mjs", gsc: "../scripts/gsc.mjs", bing: "../scripts/bing.mjs", indexnow: "../scripts/indexnow.mjs", "google-auth": "../scripts/google-auth.mjs" };
+const TOOLS = { audit: "../scripts/audit.mjs", gsc: "../scripts/gsc.mjs", bing: "../scripts/bing.mjs", indexnow: "../scripts/indexnow.mjs", cwv: "../scripts/cwv.mjs", "google-auth": "../scripts/google-auth.mjs" };
 
 export async function run(argv = process.argv.slice(2)) {
   const [cmd, ...rest] = argv;

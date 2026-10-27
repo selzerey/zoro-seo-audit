@@ -1,6 +1,6 @@
 {
   "name": "zoro-seo-audit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Low-noise SEO audit for any website: crawler with ~100 verified rules (indexing, canonical, hreflang, schema, content, AI search), Search Console / Bing reports and IndexNow. CLI and agent skill for Claude Code and Codex.",
   "keywords": [
     "seo",
@@ -53,6 +53,7 @@
     "gsc": "node scripts/gsc.mjs",
     "bing": "node scripts/bing.mjs",
     "indexnow": "node scripts/indexnow.mjs",
+    "cwv": "node scripts/cwv.mjs",
     "leak-check": "node scripts/leak-check.mjs",
     "vendor": "node tools/vendor.mjs",
     "test": "node --test \"scripts/tests/*.test.mjs\""
